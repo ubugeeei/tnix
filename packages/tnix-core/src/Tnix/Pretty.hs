@@ -1,6 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Pretty-printers for emitted `.nix`, `.d.tnix`, and human-facing type text.
+--
+-- One module owns all rendering so that CLI output, declaration files, and
+-- debug/test expectations share the same surface representation.
 module Tnix.Pretty
   ( renderDeclarationFile,
     renderExpr,
@@ -17,19 +21,24 @@ import Prettyprinter.Render.Text qualified as Render
 import Tnix.Syntax
 import Tnix.Type
 
+-- | Render an executable program back to plain Nix code.
 renderProgramAsNix :: Program -> Either Text Text
 renderProgramAsNix program =
   maybe (Left "declaration-only files cannot be compiled to .nix") (Right . render . prettyExpr 0) (programExpr program)
 
+-- | Render a declaration file for a target path and exported entries.
 renderDeclarationFile :: FilePath -> [TypeAlias] -> [(Name, Type)] -> Text
 renderDeclarationFile path aliases entries = render $ vsep (map prettyAlias aliases <> [prettyDecl path entries])
 
+-- | Render an expression using tnix/Nix surface syntax.
 renderExpr :: Expr -> Text
 renderExpr = render . prettyExpr 0
 
+-- | Render a type without scheme quantifiers.
 renderType :: Type -> Text
 renderType = render . prettyType 0
 
+-- | Render a polymorphic scheme for CLI and LSP display.
 renderScheme :: Scheme -> Text
 renderScheme (Scheme vars ty) =
   render $

@@ -1,3 +1,8 @@
+-- | Alias expansion and type-pattern utilities.
+--
+-- This module is the workhorse behind generic aliases, higher-kinded encodings,
+-- and TypeScript-style `infer` patterns. The rest of the checker treats these
+-- capabilities as structural rewrites over 'Type'.
 module Tnix.Alias
   ( AliasEnv,
     collectApps,
@@ -12,11 +17,20 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Tnix.Type
 
+-- | Environment keyed by alias name.
 type AliasEnv = Map Name TypeAlias
 
+-- | Build an alias environment from parsed declarations.
+--
+-- Later declarations with the same name win, which mirrors the simple \"last
+-- definition in scope\" strategy used elsewhere in this prototype.
 mkAliasEnv :: [TypeAlias] -> AliasEnv
 mkAliasEnv = Map.fromList . map (\alias -> (typeAliasName alias, alias))
 
+-- | Normalize nested unions and remove duplicates.
+--
+-- This keeps joins and alias expansion from producing deeply nested `a | (b |
+-- c)` shapes that are annoying for both users and subsequent algorithms.
 flattenUnion :: Type -> Type
 flattenUnion (TUnion members) =
   case foldr insert [] (concatMap expand members) of
@@ -30,12 +44,21 @@ flattenUnion (TUnion members) =
     insert item acc = item : acc
 flattenUnion other = other
 
+-- | Split a left-associated type application into its head and arguments.
+--
+-- `F A B` is represented as `TApp (TApp F A) B`, while many alias algorithms
+-- want the pair `(F, [A, B])`.
 collectApps :: Type -> (Type, [Type])
 collectApps = go []
   where
     go acc (TApp f x) = go (x : acc) f
     go acc headTy = (headTy, acc)
 
+-- | Expand type aliases up to a fixed recursion budget.
+--
+-- The implementation is intentionally eager enough to make hovers and emitted
+-- declarations useful, while still guarding against runaway self-recursive
+-- aliases.
 expandAliases :: AliasEnv -> Type -> Type
 expandAliases env = go 0
   where
@@ -64,6 +87,10 @@ expandAliases env = go 0
                in foldl TApp (go (depth + 1) body) rest
         (headTy, args) -> foldl TApp headTy args
 
+-- | Match a concrete type against a pattern containing 'TInfer' placeholders.
+--
+-- This is the structural heart of conditional types: when a pattern matches, we
+-- recover the inferred bindings and substitute them into the `true` branch.
 matchPattern :: Type -> Type -> Maybe (Map Name Type)
 matchPattern actual patternTy = go Map.empty actual patternTy
   where

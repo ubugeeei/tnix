@@ -1,5 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Minimal JSON-RPC/LSP bridge for tnix.
+--
+-- This server intentionally implements only the core interactions needed to
+-- prove the architecture: opening/changing documents, diagnostics, and hover.
+-- It delegates all semantic work to 'Tnix.Driver'.
 module Main (main) where
 
 import Control.Applicative ((<|>))
@@ -22,11 +27,13 @@ import System.IO (stdin, stdout)
 import Tnix.Driver
 import Tnix.Pretty (renderScheme)
 
+-- | Start the stdio event loop and keep the latest document text in memory.
 main :: IO ()
 main = do
   ref <- newIORef Map.empty
   forever $ readMessage >>= maybe (pure ()) (handle ref)
 
+-- | Dispatch one incoming JSON-RPC message.
 handle :: IORef (Map.Map FilePath Text) -> Value -> IO ()
 handle ref msg = case field "method" msg >>= asText of
   Just "initialize" -> respond msg (object ["capabilities" .= object ["hoverProvider" .= True, "textDocumentSync" .= (1 :: Int)]])
@@ -37,6 +44,7 @@ handle ref msg = case field "method" msg >>= asText of
   Just "textDocument/hover" -> hover ref msg >>= respond msg
   _ -> pure ()
 
+-- | Update the in-memory copy of a document and re-run analysis.
 update :: IORef (Map.Map FilePath Text) -> Value -> IO (FilePath, Either String Analysis)
 update ref msg = do
   let params = field "params" msg
@@ -48,6 +56,7 @@ update ref msg = do
   result <- analyzeText file content
   pure (file, result)
 
+-- | Extract the first full-text document change from an LSP change payload.
 firstChange :: Maybe Value -> Maybe Value
 firstChange params = do
   Array changes <- field "contentChanges" =<< params
@@ -55,6 +64,7 @@ firstChange params = do
     x : _ -> pure x
     _ -> Nothing
 
+-- | Publish diagnostics for the latest analysis result.
 publish :: (FilePath, Either String Analysis) -> IO ()
 publish (file, result) =
   notify
@@ -69,6 +79,7 @@ publish (file, result) =
         ]
     )
 
+-- | Compute hover contents at the requested position.
 hover :: IORef (Map.Map FilePath Text) -> Value -> IO Value
 hover ref msg = do
   let params = field "params" msg

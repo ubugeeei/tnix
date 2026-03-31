@@ -1,6 +1,12 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Gradual type checker and local inference engine for tnix.
+--
+-- The checker intentionally aims for useful incremental feedback rather than
+-- whole-program soundness. `dynamic` is built in, imports can be typed from
+-- ambient declarations, and remaining inference variables are surfaced as
+-- polymorphic schemes instead of forcing runtime evidence.
 module Tnix.Check
   ( CheckContext (..),
     CheckResult (..),
@@ -19,12 +25,22 @@ import Tnix.Subtyping
 import Tnix.Syntax
 import Tnix.Type
 
+-- | Inputs required to analyze one file.
+--
+-- `checkAmbient` represents the ambient world visible from the current file,
+-- while `checkAliases` contains both local aliases and any imported declaration
+-- aliases that were discovered by the driver.
 data CheckContext = CheckContext
   { checkAliases :: AliasEnv,
     checkAmbient :: Map FilePath Scheme,
     checkFile :: FilePath
   }
 
+-- | User-visible results produced by checking a program.
+--
+-- The root scheme describes the file's resulting expression, while
+-- `resultBindings` records the final types of `let`-bound names for CLI output
+-- and LSP hover.
 data CheckResult = CheckResult
   { resultRoot :: Maybe Scheme,
     resultBindings :: Map Name Scheme
@@ -35,6 +51,11 @@ data InferState = InferState {nextMeta :: Int, substitutions :: Map Int Type}
 type InferM = StateT InferState (Either String)
 type TypeEnv = Map Name Scheme
 
+-- | Check a parsed program and infer its public types.
+--
+-- The built-in environment is intentionally tiny: `builtins` is left fully
+-- dynamic and `import` only promises that a path yields something. Ambient
+-- declarations refine imports when they are available.
 checkProgram :: CheckContext -> Program -> Either String CheckResult
 checkProgram ctx program =
   evalStateT (inferTop ctx builtins) (InferState 0 Map.empty)

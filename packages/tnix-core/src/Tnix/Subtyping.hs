@@ -1,5 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- | Structural subtyping, consistency, and type reduction.
+--
+-- tnix prioritizes incremental adoption over maximum strictness. This module is
+-- where that policy becomes concrete: `dynamic` participates through
+-- consistency, records use width subtyping, and conditional types are reduced
+-- structurally.
 module Tnix.Subtyping
   ( isConsistent,
     isSubtype,
@@ -14,9 +20,14 @@ import Data.Map.Strict qualified as Map
 import Tnix.Alias
 import Tnix.Type
 
+-- | Reduce aliases, erase top-level `forall`, and evaluate conditional types.
+--
+-- Most higher-level algorithms call this before comparing types so they see a
+-- normalized structural view instead of the user-written surface form.
 resolveType :: AliasEnv -> Type -> Type
 resolveType env = go 0 . expandAliases env . eraseForall
   where
+    go :: Int -> Type -> Type
     go depth ty
       | depth > 32 = ty
       | otherwise =
@@ -35,6 +46,10 @@ resolveType env = go 0 . expandAliases env . eraseForall
                     else go (depth + 1) d
             other -> other
 
+-- | Resolve a field selection against a record-like type.
+--
+-- Union members are searched left-to-right and the first matching field is
+-- returned. This is intentionally permissive to preserve gradual adoption.
 lookupRecordField :: AliasEnv -> Type -> Name -> Maybe Type
 lookupRecordField env ty field =
   case resolveType env ty of
@@ -42,6 +57,10 @@ lookupRecordField env ty field =
     TUnion members -> foldr (\member acc -> acc <|> lookupRecordField env member field) Nothing members
     _ -> Nothing
 
+-- | Compute the least-upper-bound style merge used by the checker.
+--
+-- Where possible this returns an existing supertype; otherwise it constructs a
+-- normalized union.
 joinTypes :: AliasEnv -> Type -> Type -> Type
 joinTypes env left right
   | left' == right' = left'
@@ -52,6 +71,10 @@ joinTypes env left right
     left' = resolveType env left
     right' = resolveType env right
 
+-- | Decide whether two types can coexist under gradual typing rules.
+--
+-- Consistency is weaker than subtyping: `dynamic` is consistent with anything
+-- even when it is not a subtype of that thing.
 isConsistent :: AliasEnv -> Type -> Type -> Bool
 isConsistent env left right =
   left' == TDynamic
@@ -63,6 +86,10 @@ isConsistent env left right =
     left' = resolveType env left
     right' = resolveType env right
 
+-- | Structural subtyping relation used by the checker.
+--
+-- Functions are contravariant in their argument and covariant in their result;
+-- records use width subtyping; literals subtype their primitive constructor.
 isSubtype :: AliasEnv -> Type -> Type -> Bool
 isSubtype env left right = go (resolveType env left) (resolveType env right)
   where

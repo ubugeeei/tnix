@@ -1,5 +1,10 @@
 use zed_extension_api::{register_extension, settings::LspSettings, Command, Extension, LanguageServerId, Result, Worktree};
 
+/// Zed extension entry point for tnix.
+///
+/// The extension does not implement language logic itself. Its only job is to
+/// locate the `tnix-lsp` binary, pass through workspace shell environment
+/// variables, and respect any user override configured in Zed settings.
 struct Tnix;
 
 impl Extension for Tnix {
@@ -7,6 +12,11 @@ impl Extension for Tnix {
         Self {}
     }
 
+    /// Resolve the command used to launch the tnix language server.
+    ///
+    /// A per-worktree configured binary wins. When no override is present, the
+    /// extension falls back to looking up `tnix-lsp` on the worktree PATH so it
+    /// works naturally inside the Nix dev shell.
     fn language_server_command(
         &mut self,
         language_server_id: &LanguageServerId,
