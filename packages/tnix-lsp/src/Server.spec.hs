@@ -4,9 +4,13 @@ module Main (main) where
 
 import Data.Aeson
 import Data.Aeson.KeyMap qualified as KeyMap
+import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as B8
 import Data.Map.Strict qualified as Map
 import Driver (Analysis (..))
 import Server
+import System.Directory (getTemporaryDirectory, removeFile)
+import System.IO (Handle, SeekMode (AbsoluteSeek), hClose, hFlush, hSeek, openTempFile)
 import Test.Hspec
 import Type
 
@@ -29,12 +33,17 @@ spec = do
       let path = "/tmp/project/main.tnix"
       uriPath (pathUri path) `shouldBe` path
 
+  describe "documentPath" $
+    it "extracts the path from textDocument params" $
+      documentPath (Just (object ["textDocument" .= object ["uri" .= ("file:///tmp/main.tnix" :: String)]]))
+        `shouldBe` Just "/tmp/main.tnix"
+
   describe "wordAt" $
     it "extracts identifiers around the cursor including punctuation used by nix names" $ do
       wordAt 0 4 "lib.attr-set" `shouldBe` "lib.attr-set"
       wordAt 1 0 "x\ny" `shouldBe` "y"
 
-  describe "publishDiagnostics" $
+  describe "publishDiagnostics" $ do
     it "emits an empty diagnostics list on success and an error diagnostic on failure" $ do
       publishDiagnostics "/tmp/main.tnix" (Right successAnalysis)
         `shouldBe` object ["uri" .= ("file:///tmp/main.tnix" :: String), "diagnostics" .= ([] :: [Value])]
@@ -42,6 +51,10 @@ spec = do
         Object obj ->
           KeyMap.lookup "diagnostics" obj `shouldBe` Just (toJSON [diag "boom"])
         other -> expectationFailure ("expected object, got " <> show other)
+
+    it "builds an explicit clear-diagnostics notification body" $
+      clearDiagnostics "/tmp/main.tnix"
+        `shouldBe` object ["uri" .= ("file:///tmp/main.tnix" :: String), "diagnostics" .= ([] :: [Value])]
 
   describe "hoverResult" $
     it "prefers the hovered symbol type and falls back to the root type" $ do
@@ -51,6 +64,24 @@ spec = do
         `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\nInt\n```" :: String)]]
       hoverResult (Left "type mismatch") "box" 0 0
         `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\ntype mismatch\n```" :: String)]]
+
+  describe "framing" $ do
+    it "writes a Content-Length header followed by a JSON body" $
+      withTempHandle $ \handle -> do
+        send handle (object ["jsonrpc" .= ("2.0" :: String), "method" .= ("initialized" :: String)])
+        hFlush handle
+        hSeek handle AbsoluteSeek 0
+        payload <- BS.hGetContents handle
+        let body = snd (BS.breakSubstring "\r\n\r\n" payload)
+        "Content-Length: " `BS.isPrefixOf` payload `shouldBe` True
+        decodeStrict' (BS.drop 4 body) `shouldBe` Just (object ["jsonrpc" .= ("2.0" :: String), "method" .= ("initialized" :: String)])
+
+    it "reads a framed message payload from a handle" $
+      withTempHandle $ \handle -> do
+        B8.hPutStr handle "Content-Length: 17\r\nX-Test: 1\r\n\r\n{\"jsonrpc\":\"2.0\"}"
+        hFlush handle
+        hSeek handle AbsoluteSeek 0
+        readMessage handle `shouldReturn` Just (object ["jsonrpc" .= ("2.0" :: String)])
   where
     successAnalysis =
       Analysis
@@ -64,3 +95,12 @@ spec = do
           analysisRoot = Just (Scheme [] tInt),
           analysisBindings = Map.empty
         }
+
+withTempHandle :: (Handle -> IO a) -> IO a
+withTempHandle action = do
+  tmp <- getTemporaryDirectory
+  (path, handle) <- openTempFile tmp "tnix-lsp-spec"
+  result <- action handle
+  hClose handle
+  removeFile path
+  pure result

@@ -4,8 +4,10 @@
 module Server
   ( asInt,
     asText,
+    clearDiagnostics,
     contentLengthFromHeaders,
     diag,
+    documentPath,
     field,
     firstChange,
     hoverResult,
@@ -101,6 +103,15 @@ pathUri file = "file://" <> T.pack file
 
 uriPath :: Text -> FilePath
 uriPath text = T.unpack (fromMaybe text (T.stripPrefix "file://" text))
+
+documentPath :: Maybe Value -> Maybe FilePath
+documentPath params = do
+  textDocument <- field "textDocument" =<< params
+  uri <- field "uri" textDocument >>= asText
+  pure (uriPath uri)
+
+clearDiagnostics :: FilePath -> Value
+clearDiagnostics file = object ["uri" .= pathUri file, "diagnostics" .= ([] :: [Value])]
 
 contentLengthFromHeaders :: [BS.ByteString] -> Maybe Int
 contentLengthFromHeaders headers =

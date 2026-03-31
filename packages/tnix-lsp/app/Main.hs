@@ -17,7 +17,7 @@ import Data.Text.IO qualified as TIO
 import System.Exit (exitSuccess)
 import System.IO (stdin, stdout)
 import Driver (Analysis (..), analyzeText)
-import Server (asInt, asText, field, firstChange, hoverResult, notify, publishDiagnostics, readMessage, respond, uriPath)
+import Server (asInt, asText, clearDiagnostics, documentPath, field, firstChange, hoverResult, notify, publishDiagnostics, readMessage, respond, uriPath)
 
 -- | Start the stdio event loop and keep the latest document text in memory.
 main :: IO ()
@@ -33,6 +33,7 @@ handle ref msg = case field "method" msg >>= asText of
   Just "exit" -> exitSuccess
   Just "textDocument/didOpen" -> update ref msg >>= publish
   Just "textDocument/didChange" -> update ref msg >>= publish
+  Just "textDocument/didClose" -> closeDocument ref msg
   Just "textDocument/hover" -> hover ref msg >>= respond stdout msg
   _ -> pure ()
 
@@ -52,6 +53,15 @@ update ref msg = do
 publish :: (FilePath, Either String Analysis) -> IO ()
 publish (file, result) =
   notify stdout "textDocument/publishDiagnostics" (publishDiagnostics file result)
+
+-- | Drop a document from the in-memory cache and clear its diagnostics.
+closeDocument :: IORef (Map.Map FilePath Text) -> Value -> IO ()
+closeDocument ref msg =
+  case documentPath (field "params" msg) of
+    Just file -> do
+      modifyIORef' ref (Map.delete file)
+      notify stdout "textDocument/publishDiagnostics" (clearDiagnostics file)
+    Nothing -> pure ()
 
 -- | Compute hover contents at the requested position.
 hover :: IORef (Map.Map FilePath Text) -> Value -> IO Value

@@ -46,6 +46,7 @@ test-suite tnix-lsp-spec
     , base >=4.19 && <5
     , bytestring
     , containers
+    , directory
     , hspec
     , text
     , tnix-core
