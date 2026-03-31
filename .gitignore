@@ -1,6 +1,7 @@
 dist
 dist-*
 cabal-dev
+dist-newstyle
 *.o
 *.hi
 *.hie
@@ -21,3 +22,8 @@ cabal.project.local
 cabal.project.local~
 .HTF/
 .ghc.environment.*
+node_modules/
+.direnv/
+result
+result-*
+*.wasm
