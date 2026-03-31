@@ -1,0 +1,116 @@
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
+
+-- | Pretty-printers for emitted `.nix`, `.d.tnix`, and human-facing type text.
+--
+-- One module owns all rendering so that CLI output, declaration files, and
+-- debug/test expectations share the same surface representation.
+module Tnix.Pretty
+  ( renderDeclarationFile,
+    renderExpr,
+    renderProgramAsNix,
+    renderScheme,
+    renderType,
+  )
+where
+
+import Data.Map.Strict qualified as Map
+import Data.Text (Text)
+import Prettyprinter
+import Prettyprinter.Render.Text qualified as Render
+import Tnix.Syntax
+import Tnix.Type
+
+-- | Render an executable program back to plain Nix code.
+renderProgramAsNix :: Program -> Either Text Text
+renderProgramAsNix program =
+  maybe (Left "declaration-only files cannot be compiled to .nix") (Right . render . prettyExpr 0) (programExpr program)
+
+-- | Render a declaration file for a target path and exported entries.
+renderDeclarationFile :: FilePath -> [TypeAlias] -> [(Name, Type)] -> Text
+renderDeclarationFile path aliases entries = render $ vsep (map prettyAlias aliases <> [prettyDecl path entries])
+
+-- | Render an expression using tnix/Nix surface syntax.
+renderExpr :: Expr -> Text
+renderExpr = render . prettyExpr 0
+
+-- | Render a type without scheme quantifiers.
+renderType :: Type -> Text
+renderType = render . prettyType 0
+
+-- | Render a polymorphic scheme for CLI and LSP display.
+renderScheme :: Scheme -> Text
+renderScheme (Scheme vars ty) =
+  render $
+    if null vars
+      then prettyType 0 ty
+      else "forall" <+> hsep (pretty <$> vars) <> "." <+> prettyType 0 ty
+
+render :: Doc ann -> Text
+render = Render.renderStrict . layoutPretty defaultLayoutOptions
+
+prettyAlias :: TypeAlias -> Doc ann
+prettyAlias alias =
+  "type"
+    <+> pretty (typeAliasName alias)
+    <+> hsep (pretty <$> typeAliasParams alias)
+    <+> "="
+    <+> prettyType 0 (typeAliasBody alias)
+    <> ";"
+
+prettyDecl :: FilePath -> [(Name, Type)] -> Doc ann
+prettyDecl path entries =
+  vsep
+    [ "declare" <+> dquotes (pretty path) <+> "{",
+      indent 2 (vsep [pretty name <+> "::" <+> prettyType 0 ty <> ";" | (name, ty) <- entries]),
+      "};"
+    ]
+
+prettyExpr :: Int -> Expr -> Doc ann
+prettyExpr p = \case
+  EVar name -> pretty name
+  EString value -> dquotes (pretty value)
+  EInt value -> pretty value
+  EBool True -> "true"
+  EBool False -> "false"
+  ENull -> "null"
+  EPath path -> pretty path
+  ELambda (PVar name _) body -> parenIf (p > 0) (pretty name <> ":" <+> prettyExpr 0 body)
+  EApp f x -> parenIf (p > 1) (prettyExpr 1 f <+> prettyExpr 2 x)
+  ELet items body -> vsep ["let", indent 2 (vsep (map prettyLet items)), "in" <+> prettyExpr 0 body]
+  EAttrSet items -> vsep ["{", indent 2 (vsep (map prettyAttr items)), "}"]
+  ESelect base names -> parenIf (p > 2) (prettyExpr 2 base <> foldMap (("." <>) . pretty) names)
+  EIf a b c -> vsep ["if" <+> prettyExpr 0 a, "then" <+> prettyExpr 0 b, "else" <+> prettyExpr 0 c]
+  EList items -> "[" <+> hsep (map (prettyExpr 0) items) <+> "]"
+
+prettyLet :: LetItem -> Doc ann
+prettyLet = \case
+  LetSignature name ty -> pretty name <+> "::" <+> prettyType 0 ty <> ";"
+  LetBinding name expr -> pretty name <+> "=" <+> prettyExpr 0 expr <> ";"
+
+prettyAttr :: AttrItem -> Doc ann
+prettyAttr = \case
+  AttrField name expr -> pretty name <+> "=" <+> prettyExpr 0 expr <> ";"
+  AttrInherit names -> "inherit" <+> hsep (pretty <$> names) <> ";"
+
+prettyType :: Int -> Type -> Doc ann
+prettyType p = \case
+  TVar name -> pretty name
+  TCon name -> pretty name
+  TMeta n -> pretty ("?" <> show n)
+  TLit (LString text) -> dquotes (pretty text)
+  TLit (LInt n) -> pretty n
+  TLit (LBool True) -> "true"
+  TLit (LBool False) -> "false"
+  TDynamic -> "dynamic"
+  TFun a b -> parenIf (p > 0) (prettyType 1 a <+> "->" <+> prettyType 0 b)
+  TRecord fields -> vsep ["{", indent 2 (vsep [pretty k <+> "::" <+> prettyType 0 v <> ";" | (k, v) <- Map.toList fields]), "}"]
+  TUnion members -> parenIf (p > 1) (hsep (punctuate " |" (map (prettyType 2) members)))
+  TApp f x -> parenIf (p > 2) (prettyType 2 f <+> prettyType 3 x)
+  TForall vars body -> parenIf (p > 0) ("forall" <+> hsep (pretty <$> vars) <> "." <+> prettyType 0 body)
+  TConditional a b c d -> parenIf (p > 0) (prettyType 2 a <+> "extends" <+> prettyType 2 b <+> "?" <+> prettyType 0 c <+> ":" <+> prettyType 0 d)
+  TInfer name -> "infer" <+> pretty name
+
+parenIf :: Bool -> Doc ann -> Doc ann
+parenIf True = parens
+parenIf False = id

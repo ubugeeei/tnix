@@ -1,0 +1,15 @@
+id = "tnix"
+name = "tnix"
+version = "0.1.0"
+schema_version = 1
+authors = ["tnix contributors"]
+description = "Gradual typing support for Nix via tnix-lsp"
+repository = "https://github.com/ubugeeei/tnix"
+
+[language_servers.tnix-lsp]
+name = "tnix LSP"
+languages = ["tnix"]
+
+[grammars.nix]
+repository = "https://github.com/nix-community/tree-sitter-nix"
+commit = "eabf96807ea4ab6d6c7f09b671a88cd483542840"
