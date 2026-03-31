@@ -48,6 +48,10 @@ spec = describe "analysis" $ do
     analysis <- analyzeText "main.tnix" "[1 2]" >>= expectRight
     fmap renderScheme (analysisRoot analysis) `shouldBe` Just "List (1 | 2)"
 
+  it "infers empty lists as gradually typed lists" $ do
+    analysis <- analyzeText "main.tnix" "[]" >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "List dynamic"
+
   it "uses inline ambient declarations for imports" $ do
     analysis <-
       analyzeText
@@ -60,6 +64,23 @@ spec = describe "analysis" $ do
         >>= expectRight
     analysisRoot analysis
       `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("value", tInt)])))
+
+  it "builds record schemes from named ambient exports" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "declare \"./lib.nix\" { value :: Int; label :: String; };",
+              "import ./lib.nix"
+            ]
+        )
+        >>= expectRight
+    analysisRoot analysis
+      `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("label", tString), ("value", tInt)])))
+
+  it "treats imports without declarations as dynamic for incremental adoption" $ do
+    analysis <- analyzeText "main.tnix" "import ./unknown.nix" >>= expectRight
+    analysisRoot analysis `shouldBe` Just (Scheme [] tDynamic)
 
   it "loads ambient declarations from sibling .d.tnix files" $
     withTempTree
@@ -104,9 +125,18 @@ spec = describe "analysis" $ do
     analyzeText "main.tnix" (source ["let", "  value :: Int;", "  value :: String;", "  value = 1;", "in value"])
       >>= (`expectLeftContaining` "duplicate signatures")
 
+  it "rejects missing bindings and explicit signature mismatches" $ do
+    analyzeText "main.tnix" (source ["let", "  value :: Int;", "in 1"])
+      >>= (`expectLeftContaining` "missing bindings for signatures")
+    analyzeText "main.tnix" (source ["let", "  value :: String;", "  value = 1;", "in value"])
+      >>= (`expectLeftContaining` "type mismatch")
+
   it "rejects duplicate attribute names from fields and inherit clauses" $ do
     analyzeText "main.tnix" (source ["let", "  value = 1;", "in { value = 2; inherit value; }"])
       >>= (`expectLeftContaining` "duplicate attribute")
+
+  it "reports occurs checks for self-application" $
+    analyzeText "main.tnix" "let omega = x: x x; in omega" >>= (`expectLeftContaining` "occurs check failed")
 
   it "reports parse failures from sibling declaration files" $
     withTempTree
