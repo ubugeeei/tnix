@@ -1,0 +1,22 @@
+cabal-version:      3.8
+name:               tnix-lsp
+version:            0.1.0.0
+build-type:         Simple
+license:            MIT
+license-file:       LICENSE
+author:             tnix contributors
+maintainer:         tnix@example.com
+category:           Language
+synopsis:           Minimal LSP server for tnix
+
+executable tnix-lsp
+  main-is: Main.hs
+  hs-source-dirs: app
+  build-depends:
+      aeson
+    , base >=4.19 && <5
+    , bytestring
+    , containers
+    , text
+    , tnix-core
+  default-language: GHC2021

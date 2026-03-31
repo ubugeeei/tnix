@@ -1,0 +1,11 @@
+name = "tnix"
+grammar = "nix"
+path_suffixes = ["tnix"]
+line_comments = ["# "]
+brackets = [
+  { start = "(", end = ")", close = true, newline = true },
+  { start = "[", end = "]", close = true, newline = true },
+  { start = "{", end = "}", close = true, newline = true },
+  { start = "\"", end = "\"", close = true, newline = false, not_in = ["comment"] }
+]
+block_comment = { start = "/*", prefix = "", end = "*/", tab_size = 0 }

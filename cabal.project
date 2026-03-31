@@ -1,0 +1,7 @@
+packages:
+  packages/tnix-core
+  packages/tnix-cli
+  packages/tnix-lsp
+
+package *
+  ghc-options: -Wall

@@ -1,0 +1,53 @@
+{
+  "name": "@tnix/vscode",
+  "version": "0.1.0",
+  "private": true,
+  "displayName": "tnix",
+  "type": "module",
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "activationEvents": [
+    "onLanguage:tnix"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tnix",
+        "aliases": [
+          "tnix"
+        ],
+        "extensions": [
+          ".tnix",
+          ".d.tnix"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "tnix",
+      "properties": {
+        "tnix.server.path": {
+          "type": "string",
+          "default": "tnix-lsp",
+          "description": "Path to the tnix language server executable."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "fmt": "prettier --check src package.json tsconfig.json language-configuration.json"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.110.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  }
+}
