@@ -27,8 +27,8 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import System.Directory (doesDirectoryExist, listDirectory)
-import System.FilePath ((</>), isAbsolute, normalise, takeDirectory)
+import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+import System.FilePath ((</>), isAbsolute, joinPath, normalise, splitDirectories, takeDirectory)
 import Alias
 import Check
 import Compile
@@ -109,12 +109,17 @@ data World = World
 
 loadSupport :: FilePath -> IO (Either String World)
 loadSupport path = do
-  files <- sort . filter (/= normalise path) <$> findDeclarationFiles (takeDirectory path)
-  worlds <- forM files loadDeclarationFile
-  pure $ do
-    loaded <- sequence worlds
-    ambient <- mergeAmbientWorlds (zip files (map worldAmbient loaded))
-    pure World {worldAliases = concatMap worldAliases loaded, worldAmbient = ambient}
+  root <- findSupportRoot path
+  exists <- doesDirectoryExist root
+  if not exists
+    then pure (Right (World [] Map.empty))
+    else do
+      files <- sort . filter (/= normalise path) <$> findDeclarationFiles root
+      worlds <- forM files loadDeclarationFile
+      pure $ do
+        loaded <- sequence worlds
+        ambient <- mergeAmbientWorlds (zip files (map worldAmbient loaded))
+        pure World {worldAliases = concatMap worldAliases loaded, worldAmbient = ambient}
 
 loadDeclarationFile :: FilePath -> IO (Either String World)
 loadDeclarationFile path = do
@@ -159,8 +164,32 @@ findDeclarationFiles dir = do
 
 resolvePath :: FilePath -> FilePath -> FilePath
 resolvePath from target
-  | isAbsolute target = normalise target
-  | otherwise = normalise (takeDirectory from </> target)
+  | isAbsolute target = collapseParentSegments target
+  | otherwise = collapseParentSegments (takeDirectory from </> target)
+
+findSupportRoot :: FilePath -> IO FilePath
+findSupportRoot path = go start
+  where
+    start = normalise (takeDirectory path)
+    go dir = do
+      marked <- hasWorkspaceMarker dir
+      let parent = normalise (takeDirectory dir)
+      if marked
+        then pure dir
+        else
+          if parent == dir
+            then pure start
+            else go parent
+
+hasWorkspaceMarker :: FilePath -> IO Bool
+hasWorkspaceMarker dir =
+  or
+    <$> sequence
+      [ doesFileExist (dir </> "flake.nix"),
+        doesFileExist (dir </> "cabal.project"),
+        doesFileExist (dir </> "pnpm-workspace.yaml"),
+        doesDirectoryExist (dir </> ".git")
+      ]
 
 mergeAmbientWorlds :: [(FilePath, Map FilePath Scheme)] -> Either String (Map FilePath Scheme)
 mergeAmbientWorlds = fmap snd . foldM step (Map.empty, Map.empty)
@@ -191,3 +220,18 @@ duplicateNames = foldr step [] . group . sort
 
 firstError :: String -> Either String a -> Either String a
 firstError prefix = either (Left . (prefix <>)) Right
+
+collapseParentSegments :: FilePath -> FilePath
+collapseParentSegments = joinPath . foldl step [] . splitDirectories . normalise
+  where
+    step acc "." = acc
+    step [root] ".." | isAbsoluteRoot root = [root]
+    step [] ".." = [".."]
+    step acc ".." =
+      case reverse acc of
+        [] -> [".."]
+        root : rest
+          | isAbsoluteRoot root -> reverse (root : rest)
+        _ : rest -> reverse rest
+    step acc part = acc <> [part]
+    isAbsoluteRoot part = part == "/"

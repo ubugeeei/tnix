@@ -7,7 +7,9 @@
 -- sit next to ordinary Nix code.
 module ParserType (typeParser) where
 
+import Data.Char (isUpper)
 import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
 import Text.Megaparsec
 import ParserLexer
 import Type
@@ -90,6 +92,9 @@ varOrConParser :: Parser Type
 varOrConParser = do
   name <- identifier
   pure $
-    case show name of
-      ('"' : c : _) | c >= 'A' && c <= 'Z' -> TCon name
+    case name of
+      _
+        | Just (c, _) <- Text.uncons name,
+          isUpper c ->
+            TCon name
       _ -> TVar name

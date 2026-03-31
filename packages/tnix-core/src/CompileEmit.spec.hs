@@ -33,6 +33,26 @@ spec = describe "compile and emit" $ do
   it "refuses to compile declaration-only sources" $
     compileText "types.d.tnix" "declare \"./lib.nix\" { default :: Int; };" >>= (`expectLeftContaining` "declaration-only")
 
+  it "erases nested annotations while preserving nix control flow and inherit" $ do
+    output <-
+      compileText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: Int;",
+              "  value = 1;",
+              "in",
+              "  if true then { inherit value; mapper = (x :: Int): x; } else { value = 2; }"
+            ]
+        )
+        >>= expectRight
+    "::" `Text.isInfixOf` output `shouldBe` False
+    "if true" `Text.isInfixOf` output `shouldBe` True
+    "then {" `Text.isInfixOf` output `shouldBe` True
+    "inherit value;" `Text.isInfixOf` output `shouldBe` True
+    "mapper =" `Text.isInfixOf` output `shouldBe` True
+    "x:" `Text.isInfixOf` output `shouldBe` True
+
   it "emits field-wise declarations for attrset roots" $ do
     output <- emitText "main.tnix" "{ name = \"tnix\"; count = 1; }" >>= expectRight
     program <- expectRight (parseDecl "main.d.tnix" output)
@@ -69,5 +89,9 @@ spec = describe "compile and emit" $ do
     output <- emitText "main.tnix" "type Box t = { value :: t; }; { boxed = { value = 1; }; }" >>= expectRight
     program <- expectRight (parseDecl "main.d.tnix" output)
     programAliases program `shouldBe` [TypeAlias "Box" ["t"] (TRecord (Map.fromList [("value", TVar "t")]))]
+
+  it "emits declarations relative to the source basename" $ do
+    output <- emitText "nested/app/main.tnix" "{ value = 1; }" >>= expectRight
+    Text.isInfixOf "declare \"./main.nix\"" output `shouldBe` True
   where
     parseDecl = parseText

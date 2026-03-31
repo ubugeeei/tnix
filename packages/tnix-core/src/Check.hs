@@ -20,7 +20,7 @@ import Data.List (group, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import System.FilePath ((</>), isAbsolute, normalise, takeDirectory)
+import System.FilePath ((</>), isAbsolute, joinPath, normalise, splitDirectories, takeDirectory)
 import Alias
 import Subtyping
 import Syntax
@@ -205,8 +205,23 @@ bindMeta n ty = do
 
 resolvePath :: FilePath -> FilePath -> FilePath
 resolvePath from target
-  | isAbsolute target = normalise target
-  | otherwise = normalise (takeDirectory from </> target)
+  | isAbsolute target = collapseParentSegments target
+  | otherwise = collapseParentSegments (takeDirectory from </> target)
+
+collapseParentSegments :: FilePath -> FilePath
+collapseParentSegments = joinPath . foldl step [] . splitDirectories . normalise
+  where
+    step acc "." = acc
+    step [root] ".." | isAbsoluteRoot root = [root]
+    step [] ".." = [".."]
+    step acc ".." =
+      case reverse acc of
+        [] -> [".."]
+        root : rest
+          | isAbsoluteRoot root -> reverse (root : rest)
+        _ : rest -> reverse rest
+    step acc part = acc <> [part]
+    isAbsoluteRoot part = part == "/"
 
 duplicateNames :: Ord a => [a] -> [a]
 duplicateNames = foldr step [] . group . sort

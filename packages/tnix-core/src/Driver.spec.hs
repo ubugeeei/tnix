@@ -64,12 +64,25 @@ spec = describe "analysis" $ do
   it "loads ambient declarations from sibling .d.tnix files" $
     withTempTree
       [ ("app/main.tnix", "import ./lib.nix"),
+        ("app/flake.nix", "{}"),
         ("app/types.d.tnix", "declare \"./lib.nix\" { default :: { value :: Int; label :: String; }; };")
       ]
       ( \root -> do
           analysis <- analyzeFile (root <> "/app/main.tnix") >>= expectRight
           analysisRoot analysis
             `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("label", tString), ("value", tInt)])))
+      )
+
+  it "loads ambient declarations from the workspace root for nested source files" $
+    withTempTree
+      [ ("flake.nix", "{}"),
+        ("types.d.tnix", "declare \"./lib.nix\" { default :: { value :: Int; }; };"),
+        ("app/nested/main.tnix", "import ../../lib.nix")
+      ]
+      ( \root -> do
+          analysis <- analyzeFile (root <> "/app/nested/main.tnix") >>= expectRight
+          analysisRoot analysis
+            `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("value", tInt)])))
       )
 
   it "joins field types when selecting from unions of compatible records" $ do
@@ -112,6 +125,7 @@ spec = describe "analysis" $ do
   it "rejects duplicate ambient targets across declaration files" $
     withTempTree
       [ ("app/main.tnix", "import ./lib.nix"),
+        ("app/flake.nix", "{}"),
         ("app/a.d.tnix", "declare \"./lib.nix\" { default :: Int; };"),
         ("app/b.d.tnix", "declare \"./lib.nix\" { default :: String; };")
       ]
@@ -122,3 +136,19 @@ spec = describe "analysis" $ do
       "main.tnix"
       "declare \"./lib.nix\" { value :: Int; value :: String; }; import ./lib.nix"
       >>= (`expectLeftContaining` "duplicate ambient entry")
+
+  it "prefers inline ambient declarations over workspace declarations" $
+    withTempTree
+      [ ("flake.nix", "{}"),
+        ("types.d.tnix", "declare \"./lib.nix\" { default :: String; };"),
+        ( "app/main.tnix",
+          source
+            [ "declare \"../lib.nix\" { default :: Int; };",
+              "import ../lib.nix"
+            ]
+        )
+      ]
+      ( \root -> do
+          analysis <- analyzeFile (root <> "/app/main.tnix") >>= expectRight
+          analysisRoot analysis `shouldBe` Just (Scheme [] tInt)
+      )
