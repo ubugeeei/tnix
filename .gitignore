@@ -27,3 +27,4 @@ node_modules/
 result
 result-*
 *.wasm
+target/
