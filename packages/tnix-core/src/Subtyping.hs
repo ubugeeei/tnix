@@ -15,8 +15,8 @@ module Subtyping
   )
 where
 
-import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Alias
 import Type
 
@@ -54,7 +54,14 @@ lookupRecordField :: AliasEnv -> Type -> Name -> Maybe Type
 lookupRecordField env ty field =
   case resolveType env ty of
     TRecord fields -> Map.lookup field fields
-    TUnion members -> foldr (\member acc -> acc <|> lookupRecordField env member field) Nothing members
+    TUnion members ->
+      let hits = mapMaybe (\member -> lookupRecordField env member field) members
+       in case hits of
+            [] -> Nothing
+            _
+              | length hits == length members ->
+                  Just (foldr1 (joinTypes env) hits)
+              | otherwise -> Nothing
     _ -> Nothing
 
 -- | Compute the least-upper-bound style merge used by the checker.

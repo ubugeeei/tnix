@@ -71,3 +71,54 @@ spec = describe "analysis" $ do
           analysisRoot analysis
             `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("label", tString), ("value", tInt)])))
       )
+
+  it "joins field types when selecting from unions of compatible records" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  candidate = if true then { value = 1; } else { value = \"x\"; };",
+              "in candidate.value"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "1 | \"x\""
+
+  it "rejects duplicate let bindings and signatures" $ do
+    analyzeText "main.tnix" (source ["let", "  value = 1;", "  value = 2;", "in value"])
+      >>= (`expectLeftContaining` "duplicate bindings")
+    analyzeText "main.tnix" (source ["let", "  value :: Int;", "  value :: String;", "  value = 1;", "in value"])
+      >>= (`expectLeftContaining` "duplicate signatures")
+
+  it "rejects duplicate attribute names from fields and inherit clauses" $ do
+    analyzeText "main.tnix" (source ["let", "  value = 1;", "in { value = 2; inherit value; }"])
+      >>= (`expectLeftContaining` "duplicate attribute")
+
+  it "reports parse failures from sibling declaration files" $
+    withTempTree
+      [ ("app/main.tnix", "import ./lib.nix"),
+        ("app/types.d.tnix", "declare \"./lib.nix\" { default :: ; };")
+      ]
+      (\root -> analyzeFile (root <> "/app/main.tnix") >>= (`expectLeftContaining` "failed to load declaration file"))
+
+  it "rejects executable declaration files while loading ambient support" $
+    withTempTree
+      [ ("app/main.tnix", "import ./lib.nix"),
+        ("app/types.d.tnix", "declare \"./lib.nix\" { default :: Int; }; 1")
+      ]
+      (\root -> analyzeFile (root <> "/app/main.tnix") >>= (`expectLeftContaining` "must not contain executable expressions"))
+
+  it "rejects duplicate ambient targets across declaration files" $
+    withTempTree
+      [ ("app/main.tnix", "import ./lib.nix"),
+        ("app/a.d.tnix", "declare \"./lib.nix\" { default :: Int; };"),
+        ("app/b.d.tnix", "declare \"./lib.nix\" { default :: String; };")
+      ]
+      (\root -> analyzeFile (root <> "/app/main.tnix") >>= (`expectLeftContaining` "duplicate ambient declarations"))
+
+  it "rejects duplicate entries inside one ambient declaration" $
+    analyzeText
+      "main.tnix"
+      "declare \"./lib.nix\" { value :: Int; value :: String; }; import ./lib.nix"
+      >>= (`expectLeftContaining` "duplicate ambient entry")

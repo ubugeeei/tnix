@@ -20,8 +20,8 @@ module Driver
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (forM)
-import Data.List (isSuffixOf)
+import Control.Monad (foldM, forM)
+import Data.List (group, isSuffixOf, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -57,9 +57,11 @@ analyzeText :: FilePath -> Text -> IO (Either String Analysis)
 analyzeText path input = do
   support <- loadSupport path
   pure $ do
+    supportWorld <- support
     program <- parseText path input
-    let aliases = mkAliasEnv (programAliases program <> worldAliases support)
-        ambient = ambientFrom path program <> worldAmbient support
+    localAmbient <- collectAmbient path program
+    let aliases = mkAliasEnv (programAliases program <> worldAliases supportWorld)
+        ambient = localAmbient <> worldAmbient supportWorld
         context = CheckContext {checkAliases = aliases, checkAmbient = ambient, checkFile = path}
     result <- checkProgram context program
     pure Analysis {analysisProgram = program, analysisRoot = resultRoot result, analysisBindings = resultBindings result}
@@ -105,33 +107,48 @@ data World = World
     worldAmbient :: Map FilePath Scheme
   }
 
-loadSupport :: FilePath -> IO World
+loadSupport :: FilePath -> IO (Either String World)
 loadSupport path = do
-  files <- filter (/= normalise path) <$> findDeclarationFiles (takeDirectory path)
-  worlds <- fmap rights (forM files loadDeclarationFile)
-  pure World {worldAliases = concatMap worldAliases worlds, worldAmbient = Map.unions (map worldAmbient worlds)}
-  where
-    rights = foldr (\item acc -> either (const acc) (: acc) item) []
+  files <- sort . filter (/= normalise path) <$> findDeclarationFiles (takeDirectory path)
+  worlds <- forM files loadDeclarationFile
+  pure $ do
+    loaded <- sequence worlds
+    ambient <- mergeAmbientWorlds (zip files (map worldAmbient loaded))
+    pure World {worldAliases = concatMap worldAliases loaded, worldAmbient = ambient}
 
 loadDeclarationFile :: FilePath -> IO (Either String World)
 loadDeclarationFile path = do
   input <- Text.readFile path
   pure $ do
-    program <- parseText path input
-    pure World {worldAliases = programAliases program, worldAmbient = ambientFrom path program}
+    program <- firstError ("failed to load declaration file " <> path <> ": ") (parseText path input)
+    case programExpr program of
+      Just _ -> Left ("declaration files must not contain executable expressions: " <> path)
+      Nothing -> do
+        ambient <- collectAmbient path program
+        pure World {worldAliases = programAliases program, worldAmbient = ambient}
 
-ambientFrom :: FilePath -> Program -> Map FilePath Scheme
-ambientFrom file program = Map.fromList (map toPair (programAmbient program))
+collectAmbient :: FilePath -> Program -> Either String (Map FilePath Scheme)
+collectAmbient file program = do
+  let duplicates = duplicateNames (map (resolvePath file . ambientPath) (programAmbient program))
+  case duplicates of
+    dup : _ -> Left ("duplicate ambient declarations for target " <> show dup <> " in " <> file)
+    [] -> Map.fromList <$> traverse toPair (programAmbient program)
   where
-    toPair decl = (resolvePath file (ambientPath decl), schemeFromEntries (ambientEntries decl))
+    toPair decl = do
+      scheme <- schemeFromEntries (ambientEntries decl)
+      pure (resolvePath file (ambientPath decl), scheme)
     schemeFromEntries entries =
-      case entries of
-        [AmbientEntry "default" ty] -> schemeFromAnnotation ty
-        _ -> Scheme [] (TRecord (Map.fromList [(ambientEntryName entry, ambientEntryType entry) | entry <- entries]))
+      case duplicateNames (map ambientEntryName entries) of
+        dup : _ -> Left ("duplicate ambient entry " <> show dup <> " in " <> file)
+        [] ->
+          Right $
+            case entries of
+              [AmbientEntry "default" ty] -> schemeFromAnnotation ty
+              _ -> Scheme [] (TRecord (Map.fromList [(ambientEntryName entry, ambientEntryType entry) | entry <- entries]))
 
 findDeclarationFiles :: FilePath -> IO [FilePath]
 findDeclarationFiles dir = do
-  names <- listDirectory dir
+  names <- sort <$> listDirectory dir
   fmap concat $
     forM names $ \name -> do
       let path = dir </> name
@@ -144,3 +161,33 @@ resolvePath :: FilePath -> FilePath -> FilePath
 resolvePath from target
   | isAbsolute target = normalise target
   | otherwise = normalise (takeDirectory from </> target)
+
+mergeAmbientWorlds :: [(FilePath, Map FilePath Scheme)] -> Either String (Map FilePath Scheme)
+mergeAmbientWorlds = fmap snd . foldM step (Map.empty, Map.empty)
+  where
+    step (sources, ambient) (file, additions) =
+      foldM (insertOne file) (sources, ambient) (Map.toList additions)
+    insertOne file (sources, ambient) (target, scheme) =
+      case Map.lookup target sources of
+        Just firstSource ->
+          Left
+            ( "duplicate ambient declarations for target "
+                <> show target
+                <> " in "
+                <> firstSource
+                <> " and "
+                <> file
+            )
+        Nothing ->
+          Right (Map.insert target file sources, Map.insert target scheme ambient)
+
+duplicateNames :: Ord a => [a] -> [a]
+duplicateNames = foldr step [] . group . sort
+  where
+    step xs acc =
+      case xs of
+        first : _ | length xs > 1 -> first : acc
+        _ -> acc
+
+firstError :: String -> Either String a -> Either String a
+firstError prefix = either (Left . (prefix <>)) Right

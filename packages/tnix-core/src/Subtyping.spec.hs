@@ -5,7 +5,7 @@ module Main (main) where
 import Data.Map.Strict qualified as Map
 import Test.Hspec
 import Alias (mkAliasEnv)
-import Subtyping (isConsistent, isSubtype, joinTypes, resolveType)
+import Subtyping (isConsistent, isSubtype, joinTypes, lookupRecordField, resolveType)
 import Type
 
 main :: IO ()
@@ -45,6 +45,12 @@ spec = describe "subtyping and type reduction" $ do
   it "joins compatible types and falls back to unions" $ do
     joinTypes mempty (TLit (LString "x")) tString `shouldBe` tString
     joinTypes mempty tInt tString `shouldBe` TUnion [tInt, tString]
+
+  it "joins shared fields across union members and rejects partial records" $ do
+    lookupRecordField mempty (TUnion [TRecord (Map.fromList [("value", TLit (LInt 1))]), TRecord (Map.fromList [("value", tString)])]) "value"
+      `shouldBe` Just (TUnion [TLit (LInt 1), tString])
+    lookupRecordField mempty (TUnion [TRecord (Map.fromList [("value", tInt)]), TRecord (Map.fromList [("other", tString)])]) "value"
+      `shouldBe` Nothing
 
   it "treats dynamic as consistent but not as a subtype of concrete types" $ do
     isConsistent mempty tDynamic tString `shouldBe` True

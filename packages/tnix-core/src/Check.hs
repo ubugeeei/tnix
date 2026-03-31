@@ -16,6 +16,7 @@ where
 
 import Control.Monad (foldM, forM, when)
 import Control.Monad.State.Strict
+import Data.List (group, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -98,7 +99,11 @@ inferExpr ctx env = \case
   ELet items body -> do
     (env', _) <- inferLet ctx env items
     inferExpr ctx env' body
-  EAttrSet items -> TRecord . Map.fromList . concat <$> traverse inferAttr items
+  EAttrSet items -> do
+    fields <- concat <$> traverse inferAttr items
+    case duplicateNames (map fst fields) of
+      dup : _ -> lift (Left ("duplicate attribute: " <> show dup))
+      [] -> pure (TRecord (Map.fromList fields))
     where
       inferAttr = \case
         AttrField name expr -> do
@@ -133,9 +138,13 @@ inferLet ctx env items = do
       binds = [(name, expr) | LetBinding name expr <- items]
       bindNames = map fst binds
       missing = filter (`notElem` bindNames) (Map.keys sigs)
+      duplicateSigs = duplicateNames [name | LetSignature name _ <- items]
+      duplicateBinds = duplicateNames bindNames
       placeholder name = do
         scheme <- maybe (Scheme [] <$> freshMeta) pure (Map.lookup name sigs)
         pure (name, scheme)
+  when (not (null duplicateSigs)) (lift (Left ("duplicate signatures: " <> show duplicateSigs)))
+  when (not (null duplicateBinds)) (lift (Left ("duplicate bindings: " <> show duplicateBinds)))
   when (not (null missing)) (lift (Left ("missing bindings for signatures: " <> show missing)))
   placeholders <- Map.fromList <$> traverse placeholder bindNames
   let recursiveEnv = placeholders <> env
@@ -198,3 +207,11 @@ resolvePath :: FilePath -> FilePath -> FilePath
 resolvePath from target
   | isAbsolute target = normalise target
   | otherwise = normalise (takeDirectory from </> target)
+
+duplicateNames :: Ord a => [a] -> [a]
+duplicateNames = foldr step [] . group . sort
+  where
+    step xs acc =
+      case xs of
+        first : _ | length xs > 1 -> first : acc
+        _ -> acc
