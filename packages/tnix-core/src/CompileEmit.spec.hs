@@ -30,6 +30,35 @@ spec = describe "compile and emit" $ do
     "::" `Text.isInfixOf` output `shouldBe` False
     "id = x: x;" `Text.isInfixOf` output `shouldBe` True
 
+  it "matches the exact pretty-printed nix output for nested control flow" $ do
+    output <-
+      compileText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: Int;",
+              "  value = 1;",
+              "in",
+              "  if true then { inherit value; mapper = (x :: Int): x; } else { value = 2; }"
+            ]
+        )
+        >>= expectRight
+    output
+      `shouldBe` Text.stripEnd
+        ( source
+            [ "let",
+              "  value = 1;",
+              "in if true",
+              "then {",
+              "  inherit value;",
+              "  mapper = x: x;",
+              "}",
+              "else {",
+              "  value = 2;",
+              "}"
+            ]
+        )
+
   it "refuses to compile declaration-only sources" $
     compileText "types.d.tnix" "declare \"./lib.nix\" { default :: Int; };" >>= (`expectLeftContaining` "declaration-only")
 
@@ -65,6 +94,18 @@ spec = describe "compile and emit" $ do
             ]
         ]
 
+  it "matches the exact emitted declaration text for record roots" $ do
+    output <- emitText "main.tnix" "{ name = \"tnix\"; count = 1; }" >>= expectRight
+    output
+      `shouldBe` Text.stripEnd
+        ( source
+            [ "declare \"./main.nix\" {",
+              "  count :: 1;",
+              "  name :: \"tnix\";",
+              "};"
+            ]
+        )
+
   it "emits default for non-record or quantified roots" $ do
     output <-
       emitText
@@ -84,6 +125,27 @@ spec = describe "compile and emit" $ do
             "./main.nix"
             [AmbientEntry "default" (TForall ["t0"] (TFun (TVar "t0") (TVar "t0")))]
         ]
+
+  it "matches the exact emitted declaration text for polymorphic defaults" $ do
+    output <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  id :: forall a. a -> a;",
+              "  id = x: x;",
+              "in id"
+            ]
+        )
+        >>= expectRight
+    output
+      `shouldBe` Text.stripEnd
+        ( source
+            [ "declare \"./main.nix\" {",
+              "  default :: forall t0. t0 -> t0;",
+              "};"
+            ]
+        )
 
   it "preserves aliases when emitting declaration files" $ do
     output <- emitText "main.tnix" "type Box t = { value :: t; }; { boxed = { value = 1; }; }" >>= expectRight
