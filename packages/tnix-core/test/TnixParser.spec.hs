@@ -1,13 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module ParserSpec (spec) where
+module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import TestSupport (expectRight, source)
-import Tnix.Parser (parseProgram)
-import Tnix.Syntax
-import Tnix.Type
+import TnixParser (parseProgram)
+import TnixSyntax
+import TnixTestSupport (expectRight, source)
+import TnixType
+
+main :: IO ()
+main = hspec spec
 
 spec :: Spec
 spec = describe "parseProgram" $ do

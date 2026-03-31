@@ -1,13 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module DriverSpec (spec) where
+module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import TestSupport (expectLeftContaining, expectRight, source, withTempTree)
-import Tnix.Driver
-import Tnix.Pretty (renderScheme)
-import Tnix.Type
+import TnixDriver
+import TnixPretty (renderScheme)
+import TnixTestSupport (expectLeftContaining, expectRight, source, withTempTree)
+import TnixType
+
+main :: IO ()
+main = hspec spec
 
 spec :: Spec
 spec = describe "analysis" $ do

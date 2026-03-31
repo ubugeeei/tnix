@@ -6,7 +6,7 @@
 -- where that policy becomes concrete: `dynamic` participates through
 -- consistency, records use width subtyping, and conditional types are reduced
 -- structurally.
-module Tnix.Subtyping
+module TnixSubtyping
   ( isConsistent,
     isSubtype,
     joinTypes,
@@ -17,8 +17,8 @@ where
 
 import Control.Applicative ((<|>))
 import Data.Map.Strict qualified as Map
-import Tnix.Alias
-import Tnix.Type
+import TnixAlias
+import TnixType
 
 -- | Reduce aliases, erase top-level `forall`, and evaluate conditional types.
 --

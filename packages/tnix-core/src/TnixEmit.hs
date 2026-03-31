@@ -5,14 +5,14 @@
 -- Emission is intentionally structural: attribute-set roots become named
 -- members, while everything else is exposed as `default`. This mirrors how
 -- ambient declarations describe existing `.nix` modules.
-module Tnix.Emit (emitDeclarationFile) where
+module TnixEmit (emitDeclarationFile) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import System.FilePath (replaceExtension, takeFileName)
-import Tnix.Pretty (renderDeclarationFile)
-import Tnix.Syntax
-import Tnix.Type
+import TnixPretty (renderDeclarationFile)
+import TnixSyntax
+import TnixType
 
 -- | Emit a `.d.tnix`-style declaration text for a source file.
 --

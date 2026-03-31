@@ -1,12 +1,15 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module SubtypingSpec (spec) where
+module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import Tnix.Alias
-import Tnix.Subtyping
-import Tnix.Type
+import TnixAlias
+import TnixSubtyping
+import TnixType
+
+main :: IO ()
+main = hspec spec
 
 spec :: Spec
 spec = describe "subtyping and type reduction" $ do

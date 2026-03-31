@@ -1,14 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module CompileEmitSpec (spec) where
+module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Test.Hspec
-import TestSupport (expectLeftContaining, expectRight, source)
-import Tnix.Driver
-import Tnix.Syntax
-import Tnix.Type
+import TnixDriver
+import TnixSyntax
+import TnixTestSupport (expectLeftContaining, expectRight, source)
+import TnixType
+
+main :: IO ()
+main = hspec spec
 
 spec :: Spec
 spec = describe "compile and emit" $ do
@@ -67,4 +70,4 @@ spec = describe "compile and emit" $ do
     program <- expectRight (parseDecl "main.d.tnix" output)
     programAliases program `shouldBe` [TypeAlias "Box" ["t"] (TRecord (Map.fromList [("value", TVar "t")]))]
   where
-    parseDecl = Tnix.Driver.parseText
+    parseDecl = TnixDriver.parseText

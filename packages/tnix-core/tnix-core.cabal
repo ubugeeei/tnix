@@ -11,19 +11,19 @@ synopsis:           Core parser, type checker, compiler, and emitter for tnix
 
 library
   exposed-modules:
-      Tnix.Alias
-    , Tnix.Check
-    , Tnix.Compile
-    , Tnix.Driver
-    , Tnix.Emit
-    , Tnix.Parser
-    , Tnix.Parser.Expr
-    , Tnix.Parser.Lexer
-    , Tnix.Parser.Type
-    , Tnix.Pretty
-    , Tnix.Subtyping
-    , Tnix.Syntax
-    , Tnix.Type
+      TnixAlias
+    , TnixCheck
+    , TnixCompile
+    , TnixDriver
+    , TnixEmit
+    , TnixParser
+    , TnixParserExpr
+    , TnixParserLexer
+    , TnixParserType
+    , TnixPretty
+    , TnixSubtyping
+    , TnixSyntax
+    , TnixType
   hs-source-dirs:
       src
   build-depends:
@@ -38,17 +38,60 @@ library
     , text
   default-language: GHC2021
 
-test-suite tnix-core-test
+test-suite tnix-parser-spec
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
+  main-is: TnixParser.spec.hs
   hs-source-dirs:
       test
   other-modules:
-      CompileEmitSpec
-    , DriverSpec
-    , ParserSpec
-    , SubtypingSpec
-    , TestSupport
+      TnixTestSupport
+  build-depends:
+      base >=4.19 && <5
+    , containers
+    , directory
+    , filepath
+    , hspec
+    , text
+    , tnix-core
+  default-language: GHC2021
+
+test-suite tnix-subtyping-spec
+  type: exitcode-stdio-1.0
+  main-is: TnixSubtyping.spec.hs
+  hs-source-dirs:
+      test
+  build-depends:
+      base >=4.19 && <5
+    , containers
+    , hspec
+    , text
+    , tnix-core
+  default-language: GHC2021
+
+test-suite tnix-driver-spec
+  type: exitcode-stdio-1.0
+  main-is: TnixDriver.spec.hs
+  hs-source-dirs:
+      test
+  other-modules:
+      TnixTestSupport
+  build-depends:
+      base >=4.19 && <5
+    , containers
+    , directory
+    , filepath
+    , hspec
+    , text
+    , tnix-core
+  default-language: GHC2021
+
+test-suite tnix-compile-emit-spec
+  type: exitcode-stdio-1.0
+  main-is: TnixCompileEmit.spec.hs
+  hs-source-dirs:
+      test
+  other-modules:
+      TnixTestSupport
   build-depends:
       base >=4.19 && <5
     , containers

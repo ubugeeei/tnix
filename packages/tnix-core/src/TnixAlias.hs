@@ -3,7 +3,7 @@
 -- This module is the workhorse behind generic aliases, higher-kinded encodings,
 -- and TypeScript-style `infer` patterns. The rest of the checker treats these
 -- capabilities as structural rewrites over 'Type'.
-module Tnix.Alias
+module TnixAlias
   ( AliasEnv,
     collectApps,
     expandAliases,
@@ -15,7 +15,7 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Tnix.Type
+import TnixType
 
 -- | Environment keyed by alias name.
 type AliasEnv = Map Name TypeAlias
