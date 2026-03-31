@@ -3,11 +3,11 @@
 -- The compiler does not change runtime semantics. It simply removes type-only
 -- constructs, leaving a Nix expression that stays close to the original source
 -- layout.
-module TnixCompile (compileProgram) where
+module Compile (compileProgram) where
 
 import Data.Text (Text)
-import TnixPretty (renderProgramAsNix)
-import TnixSyntax
+import Pretty (renderProgramAsNix)
+import Syntax
 
 -- | Compile a checked or unchecked program by erasing type syntax first.
 compileProgram :: Program -> Either Text Text

@@ -7,7 +7,7 @@
 -- whole-program soundness. `dynamic` is built in, imports can be typed from
 -- ambient declarations, and remaining inference variables are surfaced as
 -- polymorphic schemes instead of forcing runtime evidence.
-module TnixCheck
+module Check
   ( CheckContext (..),
     CheckResult (..),
     checkProgram,
@@ -20,10 +20,10 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import System.FilePath ((</>), isAbsolute, normalise, takeDirectory)
-import TnixAlias
-import TnixSubtyping
-import TnixSyntax
-import TnixType
+import Alias
+import Subtyping
+import Syntax
+import Type
 
 -- | Inputs required to analyze one file.
 --

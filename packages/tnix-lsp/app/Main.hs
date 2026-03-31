@@ -4,7 +4,7 @@
 --
 -- This server intentionally implements only the core interactions needed to
 -- prove the architecture: opening/changing documents, diagnostics, and hover.
--- It delegates all semantic work to 'TnixDriver'.
+-- It delegates all semantic work to 'Driver'.
 module Main (main) where
 
 import Control.Applicative ((<|>))
@@ -24,8 +24,8 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import System.Exit (exitSuccess)
 import System.IO (stdin, stdout)
-import TnixDriver
-import TnixPretty (renderScheme)
+import Driver (Analysis (..), analyzeText, lookupSymbolType)
+import Pretty (renderScheme)
 
 -- | Start the stdio event loop and keep the latest document text in memory.
 main :: IO ()

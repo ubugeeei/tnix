@@ -5,10 +5,10 @@ module Main (main) where
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Test.Hspec
-import TnixDriver
-import TnixSyntax
-import TnixTestSupport (expectLeftContaining, expectRight, source)
-import TnixType
+import Driver (compileText, emitText, parseText)
+import Syntax
+import TestSupport (expectLeftContaining, expectRight, source)
+import Type
 
 main :: IO ()
 main = hspec spec
@@ -70,4 +70,4 @@ spec = describe "compile and emit" $ do
     program <- expectRight (parseDecl "main.d.tnix" output)
     programAliases program `shouldBe` [TypeAlias "Box" ["t"] (TRecord (Map.fromList [("value", TVar "t")]))]
   where
-    parseDecl = TnixDriver.parseText
+    parseDecl = parseText

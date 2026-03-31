@@ -6,7 +6,7 @@
 -- The rest of the repo treats this module as the main service layer. CLI
 -- commands call it directly, the LSP keeps analyzed results from it in memory,
 -- and tests use it to exercise end-to-end behavior.
-module TnixDriver
+module Driver
   ( Analysis (..),
     analyzeFile,
     analyzeText,
@@ -29,13 +29,13 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath ((</>), isAbsolute, normalise, takeDirectory)
-import TnixAlias
-import TnixCheck
-import TnixCompile
-import TnixEmit
-import TnixParser
-import TnixSyntax
-import TnixType
+import Alias
+import Check
+import Compile
+import Emit
+import Parser
+import Syntax
+import Type
 
 -- | End-to-end analysis result for one file.
 --

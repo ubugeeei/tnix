@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module TnixTestSupport
+module TestSupport
   ( expectLeftContaining,
     expectRight,
     source,

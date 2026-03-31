@@ -4,9 +4,9 @@ module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import TnixAlias
-import TnixSubtyping
-import TnixType
+import Alias (mkAliasEnv)
+import Subtyping (isConsistent, isSubtype, joinTypes, resolveType)
+import Type
 
 main :: IO ()
 main = hspec spec

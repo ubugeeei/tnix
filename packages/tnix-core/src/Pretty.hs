@@ -5,7 +5,7 @@
 --
 -- One module owns all rendering so that CLI output, declaration files, and
 -- debug/test expectations share the same surface representation.
-module TnixPretty
+module Pretty
   ( renderDeclarationFile,
     renderExpr,
     renderProgramAsNix,
@@ -18,8 +18,8 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Prettyprinter
 import Prettyprinter.Render.Text qualified as Render
-import TnixSyntax
-import TnixType
+import Syntax
+import Type
 
 -- | Render an executable program back to plain Nix code.
 renderProgramAsNix :: Program -> Either Text Text

@@ -3,7 +3,7 @@
 -- The AST intentionally stays close to ordinary Nix source. Type-only syntax is
 -- attached as annotations or top-level declarations so that erasure back to
 -- `.nix` is straightforward and existing mental models still apply.
-module TnixSyntax
+module Syntax
   ( AmbientDecl (..),
     AmbientEntry (..),
     AttrItem (..),
@@ -14,7 +14,7 @@ module TnixSyntax
   )
 where
 
-import TnixType (Name, Type, TypeAlias)
+import Type (Name, Type, TypeAlias)
 
 -- | A complete tnix file.
 --

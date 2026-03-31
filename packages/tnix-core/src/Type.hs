@@ -8,7 +8,7 @@
 -- declaration emission, and LSP hover all inspect the same tree. It also fits
 -- tnix's TypeScript-inspired strategy where types are erased before runtime and
 -- may remain partially unresolved for a while.
-module TnixType
+module Type
   ( LiteralType (..),
     Name,
     Scheme (..),

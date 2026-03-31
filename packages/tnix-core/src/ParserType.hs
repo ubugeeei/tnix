@@ -5,12 +5,12 @@
 -- The syntax combines Haskell-like binders (`forall`) with TypeScript-inspired
 -- features (`extends`, `infer`) while keeping the visual shape light enough to
 -- sit next to ordinary Nix code.
-module TnixParserType (typeParser) where
+module ParserType (typeParser) where
 
 import Data.Map.Strict qualified as Map
 import Text.Megaparsec
-import TnixParserLexer
-import TnixType
+import ParserLexer
+import Type
 
 -- | Entry point for type parsing.
 typeParser :: Parser Type

@@ -4,14 +4,14 @@
 --
 -- The parser preserves Nix-like surface structure as much as possible so that
 -- compilation can be implemented as a mostly mechanical erasure pass.
-module TnixParserExpr (expressionParser, programParser) where
+module ParserExpr (expressionParser, programParser) where
 
 import Data.Text qualified as Text
 import Text.Megaparsec
-import TnixParserLexer
-import TnixParserType
-import TnixSyntax
-import TnixType
+import ParserLexer
+import ParserType
+import Syntax
+import Type
 
 -- | Parse a full tnix source file.
 programParser :: Parser Program

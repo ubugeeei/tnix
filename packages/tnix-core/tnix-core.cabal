@@ -11,19 +11,19 @@ synopsis:           Core parser, type checker, compiler, and emitter for tnix
 
 library
   exposed-modules:
-      TnixAlias
-    , TnixCheck
-    , TnixCompile
-    , TnixDriver
-    , TnixEmit
-    , TnixParser
-    , TnixParserExpr
-    , TnixParserLexer
-    , TnixParserType
-    , TnixPretty
-    , TnixSubtyping
-    , TnixSyntax
-    , TnixType
+      Alias
+    , Check
+    , Compile
+    , Driver
+    , Emit
+    , Parser
+    , ParserExpr
+    , ParserLexer
+    , ParserType
+    , Pretty
+    , Subtyping
+    , Syntax
+    , Type
   hs-source-dirs:
       src
   build-depends:
@@ -38,66 +38,53 @@ library
     , text
   default-language: GHC2021
 
-test-suite tnix-parser-spec
-  type: exitcode-stdio-1.0
-  main-is: TnixParser.spec.hs
+common spec-defaults
   hs-source-dirs:
-      test
+      src
   other-modules:
-      TnixTestSupport
+      Alias
+    , Check
+    , Compile
+    , Driver
+    , Emit
+    , Parser
+    , ParserExpr
+    , ParserLexer
+    , ParserType
+    , Pretty
+    , Subtyping
+    , Syntax
+    , TestSupport
+    , Type
   build-depends:
       base >=4.19 && <5
     , containers
     , directory
     , filepath
     , hspec
+    , megaparsec
+    , mtl
+    , parser-combinators
+    , prettyprinter
     , text
-    , tnix-core
   default-language: GHC2021
+
+test-suite tnix-parser-spec
+  import: spec-defaults
+  type: exitcode-stdio-1.0
+  main-is: Parser.spec.hs
 
 test-suite tnix-subtyping-spec
+  import: spec-defaults
   type: exitcode-stdio-1.0
-  main-is: TnixSubtyping.spec.hs
-  hs-source-dirs:
-      test
-  build-depends:
-      base >=4.19 && <5
-    , containers
-    , hspec
-    , text
-    , tnix-core
-  default-language: GHC2021
+  main-is: Subtyping.spec.hs
 
 test-suite tnix-driver-spec
+  import: spec-defaults
   type: exitcode-stdio-1.0
-  main-is: TnixDriver.spec.hs
-  hs-source-dirs:
-      test
-  other-modules:
-      TnixTestSupport
-  build-depends:
-      base >=4.19 && <5
-    , containers
-    , directory
-    , filepath
-    , hspec
-    , text
-    , tnix-core
-  default-language: GHC2021
+  main-is: Driver.spec.hs
 
 test-suite tnix-compile-emit-spec
+  import: spec-defaults
   type: exitcode-stdio-1.0
-  main-is: TnixCompileEmit.spec.hs
-  hs-source-dirs:
-      test
-  other-modules:
-      TnixTestSupport
-  build-depends:
-      base >=4.19 && <5
-    , containers
-    , directory
-    , filepath
-    , hspec
-    , text
-    , tnix-core
-  default-language: GHC2021
+  main-is: CompileEmit.spec.hs

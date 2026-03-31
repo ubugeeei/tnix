@@ -4,10 +4,10 @@ module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import TnixDriver
-import TnixPretty (renderScheme)
-import TnixTestSupport (expectLeftContaining, expectRight, source, withTempTree)
-import TnixType
+import Driver (Analysis (..), analyzeFile, analyzeText)
+import Pretty (renderScheme)
+import TestSupport (expectLeftContaining, expectRight, source, withTempTree)
+import Type
 
 main :: IO ()
 main = hspec spec

@@ -5,7 +5,7 @@
 -- The grammar stays intentionally close to Nix, so the lexer mostly handles
 -- whitespace, comments, simple identifiers, and path literals instead of
 -- inventing a heavy token stream.
-module TnixParserLexer
+module ParserLexer
   ( Parser,
     brackets,
     braces,
@@ -29,7 +29,7 @@ import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
-import TnixType (Name)
+import Type (Name)
 
 -- | Parser type used throughout the frontend.
 type Parser = Parsec Void Text

@@ -4,10 +4,10 @@ module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import TnixParser (parseProgram)
-import TnixSyntax
-import TnixTestSupport (expectRight, source)
-import TnixType
+import Parser (parseProgram)
+import Syntax
+import TestSupport (expectRight, source)
+import Type
 
 main :: IO ()
 main = hspec spec

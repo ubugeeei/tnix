@@ -13,8 +13,8 @@ import Data.Text (Text)
 import Data.Text.IO qualified as Text
 import Options.Applicative
 import System.Exit (die)
-import TnixDriver
-import TnixPretty (renderScheme)
+import Driver (Analysis (..), analyzeFile, compileFile, emitFile)
+import Pretty (renderScheme)
 
 -- | Supported subcommands.
 data Command
