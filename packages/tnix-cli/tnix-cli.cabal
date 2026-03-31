@@ -9,6 +9,20 @@ maintainer:         tnix@example.com
 category:           Language
 synopsis:           CLI for tnix
 
+library
+  exposed-modules:
+      Cli
+  hs-source-dirs: src
+  build-depends:
+      base >=4.19 && <5
+    , containers
+    , directory
+    , filepath
+    , optparse-applicative
+    , text
+    , tnix-core
+  default-language: GHC2021
+
 executable tnix
   main-is: Main.hs
   hs-source-dirs: app
@@ -17,5 +31,24 @@ executable tnix
     , containers
     , optparse-applicative
     , text
+    , tnix-cli
+    , tnix-core
+  default-language: GHC2021
+
+test-suite tnix-cli-spec
+  type: exitcode-stdio-1.0
+  main-is: Cli.spec.hs
+  hs-source-dirs: src
+  other-modules:
+      Cli
+  build-depends:
+      base >=4.19 && <5
+    , containers
+    , directory
+    , filepath
+    , hspec
+    , optparse-applicative
+    , text
+    , tnix-cli
     , tnix-core
   default-language: GHC2021

@@ -9,6 +9,19 @@ maintainer:         tnix@example.com
 category:           Language
 synopsis:           Minimal LSP server for tnix
 
+library
+  exposed-modules:
+      Server
+  hs-source-dirs: src
+  build-depends:
+      aeson
+    , base >=4.19 && <5
+    , bytestring
+    , containers
+    , text
+    , tnix-core
+  default-language: GHC2021
+
 executable tnix-lsp
   main-is: Main.hs
   hs-source-dirs: app
@@ -18,5 +31,23 @@ executable tnix-lsp
     , bytestring
     , containers
     , text
+    , tnix-lsp
     , tnix-core
+  default-language: GHC2021
+
+test-suite tnix-lsp-spec
+  type: exitcode-stdio-1.0
+  main-is: Server.spec.hs
+  hs-source-dirs: src
+  other-modules:
+      Server
+  build-depends:
+      aeson
+    , base >=4.19 && <5
+    , bytestring
+    , containers
+    , hspec
+    , text
+    , tnix-core
+    , tnix-lsp
   default-language: GHC2021
