@@ -102,3 +102,8 @@ test-suite tnix-compile-emit-spec
   import: spec-defaults
   type: exitcode-stdio-1.0
   main-is: CompileEmit.spec.hs
+
+test-suite tnix-registry-spec
+  import: spec-defaults
+  type: exitcode-stdio-1.0
+  main-is: Registry.spec.hs
