@@ -8,6 +8,6 @@ type TnixProjectConfig = {
   builtins :: Bool;
 };
 
-declare "./tnix.config.tnix" {
+declare "../../tnix.config.tnix" {
   default :: TnixProjectConfig;
 };

@@ -21,7 +21,7 @@ main :: IO ()
 main = hspec spec
 
 spec :: Spec
-spec = describe "ecosystem registry" $ do
+spec = describe "bundled registry" $ do
   it "parses and validates the bundled declaration files" $ do
     root <- findRepoRoot =<< getCurrentDirectory
     forM_ bundledDeclarationFiles $ \relative -> do
@@ -31,9 +31,58 @@ spec = describe "ecosystem registry" $ do
       validateProgramKinds (programAliases program) program `shouldSatisfy` isRight
       validateProgramIndexedTypes program `shouldBe` Right ()
 
+  it "lets projects reuse bundled workspace declarations" $ do
+    root <- findRepoRoot =<< getCurrentDirectory
+    registry <- loadRegistry root workspaceRegistryFiles
+    withTempTree
+      ( registry
+          <> [ ( "tnix.config.tnix",
+                 source
+                   [ "{",
+                     "  name = \"demo\";",
+                     "  sourceDir = ./src;",
+                     "  entry = ./src/main.tnix;",
+                     "  declarationDir = ./types;",
+                     "  builtins = true;",
+                     "}"
+                   ]
+             ),
+             ( "flake.nix",
+               source
+                 [ "{",
+                   "  description = \"demo flake\";",
+                   "  inputs = {",
+                   "    nixpkgs = { url = \"github:NixOS/nixpkgs\"; };",
+                   "    flake-utils = { url = \"github:numtide/flake-utils\"; };",
+                   "  };",
+                   "  outputs = inputs: {",
+                   "    formatter = {",
+                   "      x86_64-linux = 1;",
+                   "      aarch64-linux = 1;",
+                   "      x86_64-darwin = 1;",
+                   "      aarch64-darwin = 1;",
+                   "    };",
+                   "    devShells = {",
+                   "      x86_64-linux = { default = 1; };",
+                   "      aarch64-linux = { default = 1; };",
+                   "      x86_64-darwin = { default = 1; };",
+                   "      aarch64-darwin = { default = 1; };",
+                   "    };",
+                   "  };",
+                   "}"
+                 ]
+             ),
+             ("src/main.tnix", "let cfg = import ../tnix.config.tnix; flake = import ../flake.nix; in [cfg.builtins flake.description]")
+           ]
+      )
+      ( \tmp -> do
+          analysis <- analyzeFile (tmp </> "src/main.tnix") >>= expectRight
+          renderedRoot analysis `shouldBe` "Tuple [ Bool String ]"
+      )
+
   it "lets projects reuse bundled nixpkgs aliases inside ambient declarations" $ do
     root <- findRepoRoot =<< getCurrentDirectory
-    registry <- loadRegistry root ["registry/nixpkgs-lib.d.tnix", "registry/nixpkgs-pkgs.d.tnix"]
+    registry <- loadRegistry root ["registry/ecosystem/nixpkgs-lib.d.tnix", "registry/ecosystem/nixpkgs-pkgs.d.tnix"]
     withTempTree
       ( registry
           <> [ ( "types.d.tnix",
@@ -162,19 +211,26 @@ spec = describe "ecosystem registry" $ do
 
 registryFiles :: [FilePath]
 registryFiles =
-  [ "registry/nixpkgs-lib.d.tnix",
-    "registry/nixpkgs-pkgs.d.tnix",
-    "registry/flake-ecosystem.d.tnix",
-    "registry/community-flakes.d.tnix"
+  [ "registry/ecosystem/nixpkgs-lib.d.tnix",
+    "registry/ecosystem/nixpkgs-pkgs.d.tnix",
+    "registry/ecosystem/flake-ecosystem.d.tnix",
+    "registry/ecosystem/community-flakes.d.tnix"
   ]
 
 bundledDeclarationFiles :: [FilePath]
 bundledDeclarationFiles =
-  [ "builtins.d.tnix",
-    "flake.d.tnix",
-    "tnix.config.d.tnix"
+  [ "registry/workspace/builtins.d.tnix",
+    "registry/workspace/flake.d.tnix",
+    "registry/workspace/tnix.config.d.tnix"
   ]
     <> registryFiles
+
+workspaceRegistryFiles :: [FilePath]
+workspaceRegistryFiles =
+  [ "registry/workspace/builtins.d.tnix",
+    "registry/workspace/flake.d.tnix",
+    "registry/workspace/tnix.config.d.tnix"
+  ]
 
 loadRegistry :: FilePath -> [FilePath] -> IO [(FilePath, Text)]
 loadRegistry root files =

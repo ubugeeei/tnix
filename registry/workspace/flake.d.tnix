@@ -24,7 +24,7 @@ type ResolvedFlakeInputs = {
   flake-utils :: dynamic;
 };
 
-declare "./flake.nix" {
+declare "../../flake.nix" {
   description :: String;
   inputs :: {
     nixpkgs :: FlakeInputSpec;
