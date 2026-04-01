@@ -31,7 +31,7 @@ spec = describe "analysis" $ do
         )
         >>= expectRight
     Map.lookup "id" (analysisBindings analysis)
-      `shouldBe` Just (Scheme ["a"] (TFun (TVar "a") (TVar "a")))
+      `shouldBe` Just (Scheme ["a"] (TFun Many (TVar "a") (TVar "a")))
     fmap renderScheme (analysisRoot analysis) `shouldBe` Just "forall t0. t0 -> t0"
 
   it "follows structural field selections" $ do
@@ -146,6 +146,30 @@ spec = describe "analysis" $ do
       analyzeText "main.tnix" (source ["let pair :: Tuple [Int String];", "    pair = [1 \"x\"];", "in pair"])
         >>= expectRight
     fmap renderScheme (analysisRoot tupleAnalysis) `shouldBe` Just "Tuple [ Int String ]"
+
+  it "accepts explicitly linear functions whose binders are consumed once" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  consume :: Int %1 -> Int;",
+              "  consume = x: x;",
+              "in consume"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Int %1 -> Int"
+
+  it "rejects explicitly linear functions that drop or duplicate their binders" $ do
+    analyzeText
+      "main.tnix"
+      (source ["let", "  drop :: Int %1 -> Int;", "  drop = x: 1;", "in drop"])
+      >>= (`expectLeftContaining` "type mismatch")
+    analyzeText
+      "main.tnix"
+      (source ["let", "  dup :: Int %1 -> Tuple [Int Int];", "  dup = x: [x x];", "in dup"])
+      >>= (`expectLeftContaining` "type mismatch")
 
   it "treats imports without declarations as dynamic for incremental adoption" $ do
     analysis <- analyzeText "main.tnix" "import ./unknown.nix" >>= expectRight

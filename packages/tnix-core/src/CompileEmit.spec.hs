@@ -123,7 +123,7 @@ spec = describe "compile and emit" $ do
       `shouldBe`
         [ AmbientDecl
             "./main.nix"
-            [AmbientEntry "default" (TForall ["t0"] (TFun (TVar "t0") (TVar "t0")))]
+            [AmbientEntry "default" (TForall ["t0"] (TFun Many (TVar "t0") (TVar "t0")))]
         ]
 
   it "matches the exact emitted declaration text for polymorphic defaults" $ do
@@ -187,6 +187,20 @@ spec = describe "compile and emit" $ do
                 (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 2), TLit (LInt 1)])) (TUnion [TLit (LInt 1), TLit (LInt 2), TLit (LInt 3), TLit (LInt 4)]))
             ]
         ]
+
+  it "emits linear function arrows in declaration output" $ do
+    output <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  consume :: Int %1 -> Int;",
+              "  consume = x: x;",
+              "in consume"
+            ]
+        )
+        >>= expectRight
+    Text.isInfixOf "default :: Int %1 -> Int;" output `shouldBe` True
 
   it "emits declarations relative to the source basename" $ do
     output <- emitText "nested/app/main.tnix" "{ value = 1; }" >>= expectRight

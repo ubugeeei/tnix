@@ -22,10 +22,14 @@ spec = describe "subtyping and type reduction" $ do
     isSubtype mempty (TRecord (Map.fromList [("a", tInt), ("b", tString)])) (TRecord (Map.fromList [("a", tInt)]))
       `shouldBe` True
 
-  it "uses contravariant inputs and covariant outputs for functions" $ do
-    let broad = TFun tString (TRecord (Map.fromList [("name", tString), ("value", tInt)]))
-        narrow = TFun (TLit (LString "x")) (TRecord (Map.fromList [("name", tString)]))
+  it "uses contravariant inputs, covariant outputs, and multiplicity subtyping for functions" $ do
+    let broad = TFun Many tString (TRecord (Map.fromList [("name", tString), ("value", tInt)]))
+        narrow = TFun Many (TLit (LString "x")) (TRecord (Map.fromList [("name", tString)]))
+        linear = TFun One tString tString
+        unrestricted = TFun Many tString tString
     isSubtype mempty broad narrow `shouldBe` True
+    isSubtype mempty linear unrestricted `shouldBe` True
+    isSubtype mempty unrestricted linear `shouldBe` False
 
   it "reduces generic aliases including HKT-shaped applications" $ do
     let env =

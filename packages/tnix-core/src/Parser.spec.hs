@@ -59,6 +59,14 @@ spec = describe "parseProgram" $ do
     programAliases program
       `shouldBe` [TypeAlias "Pair" [] (TApp (TCon "Tuple") (TTypeList [tInt, tString]))]
 
+  it "parses linear function arrows alongside ordinary arrows" $ do
+    program <- expectRight $ parseProgram "main.tnix" "type Consume a = a %1 -> a; type Endo a = a -> a;"
+    programAliases program
+      `shouldBe`
+        [ TypeAlias "Consume" ["a"] (TFun One (TVar "a") (TVar "a")),
+          TypeAlias "Endo" ["a"] (TFun Many (TVar "a") (TVar "a"))
+        ]
+
   it "parses typed lambda binders" $ do
     program <- expectRight $ parseProgram "main.tnix" "(x :: Int): x"
     programExpr program `shouldBe` Just (ELambda (PVar "x" (Just tInt)) (EVar "x"))
