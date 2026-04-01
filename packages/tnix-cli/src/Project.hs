@@ -109,7 +109,8 @@ scaffoldFromConfig config = do
 
 plannedFiles :: ProjectConfig -> [PlannedFile]
 plannedFiles config =
-  [ PlannedFile (configEntry config) (renderEntryFile config)
+  [ PlannedFile (configRoot config </> "tnix.config.d.tnix") (renderConfigDeclarationFile config),
+    PlannedFile (configEntry config) (renderEntryFile config)
   ]
     <> [PlannedFile (configDeclarationDir config </> "builtins.d.tnix") builtinsTemplate | configBuiltins config]
 
@@ -209,6 +210,24 @@ renderEntryFile config =
       "  greeting :: String;",
       "  greeting = " <> quoted ("Hello from " <> configName config) <> ";",
       "in greeting"
+    ]
+
+renderConfigDeclarationFile :: ProjectConfig -> Text
+renderConfigDeclarationFile _ =
+  Text.unlines
+    [ "type TnixProjectPath = Path | String;",
+      "",
+      "type TnixProjectConfig = {",
+      "  name :: String;",
+      "  sourceDir :: TnixProjectPath;",
+      "  entry :: TnixProjectPath;",
+      "  declarationDir :: TnixProjectPath;",
+      "  builtins :: Bool;",
+      "};",
+      "",
+      "declare " <> quoted "./tnix.config.tnix" <> " {",
+      "  default :: TnixProjectConfig;",
+      "};"
     ]
 
 builtinsTemplate :: Text

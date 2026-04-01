@@ -1,0 +1,13 @@
+type TnixProjectPath = Path | String;
+
+type TnixProjectConfig = {
+  name :: String;
+  sourceDir :: TnixProjectPath;
+  entry :: TnixProjectPath;
+  declarationDir :: TnixProjectPath;
+  builtins :: Bool;
+};
+
+declare "./tnix.config.tnix" {
+  default :: TnixProjectConfig;
+};
