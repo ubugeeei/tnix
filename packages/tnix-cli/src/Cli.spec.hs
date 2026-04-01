@@ -28,9 +28,11 @@ spec = do
       parse ["compile", "main.tnix", "-o", "dist/main.nix"]
         `shouldBe` Just (Compile "main.tnix" (Just "dist/main.nix"))
 
-    it "parses check and emit commands" $ do
+    it "parses check, emit, init, and scaffold commands" $ do
       parse ["check", "main.tnix"] `shouldBe` Just (Check "main.tnix")
       parse ["emit", "main.tnix"] `shouldBe` Just (Emit "main.tnix" Nothing)
+      parse ["init"] `shouldBe` Just (Init Nothing)
+      parse ["scaffold", "demo"] `shouldBe` Just (Scaffold (Just "demo"))
 
     it "reports an error for missing subcommands" $ do
       case parserResult [] of
@@ -57,6 +59,8 @@ spec = do
       commandOutputPath (Compile "main.tnix" (Just "dist/main.nix")) `shouldBe` Just "dist/main.nix"
       commandOutputPath (Emit "main.tnix" (Just "types/main.d.tnix")) `shouldBe` Just "types/main.d.tnix"
       commandOutputPath (Check "main.tnix") `shouldBe` Nothing
+      commandOutputPath (Init Nothing) `shouldBe` Nothing
+      commandOutputPath (Scaffold Nothing) `shouldBe` Nothing
 
   describe "executeCommand" $ do
     it "compiles source files through the driver end-to-end" $
@@ -104,6 +108,65 @@ spec = do
         \root ->
           executeCommand (Compile (root <> "/types.d.tnix") Nothing)
             >>= (`expectLeftContaining` "declaration-only")
+
+    it "initializes a project with tnix.config.tnix and starter files" $
+      withTempTree [] $ \root -> do
+        output <- executeCommand (Init (Just root)) >>= expectRight
+        let configPath = root </> "tnix.config.tnix"
+            entryPath = root </> "src/main.tnix"
+            builtinsPath = root </> "types/builtins.d.tnix"
+        doesFileExist configPath `shouldReturn` True
+        doesFileExist entryPath `shouldReturn` True
+        doesFileExist builtinsPath `shouldReturn` True
+        config <- TextIO.readFile configPath
+        entry <- TextIO.readFile entryPath
+        Text.isInfixOf "sourceDir = ./src;" config `shouldBe` True
+        Text.isInfixOf "Hello from" entry `shouldBe` True
+        Text.isInfixOf "tnix.config.tnix" output `shouldBe` True
+
+    it "scaffolds from tnix.config.tnix path overrides without overwriting existing files" $
+      withTempTree
+        [ ( "tnix.config.tnix",
+            source
+              [ "{",
+                "  name = \"demo\";",
+                "  sourceDir = ./app;",
+                "  entry = ./app/custom.tnix;",
+                "  declarationDir = \"./decls\";",
+                "  builtins = true;",
+                "}"
+              ]
+          ),
+          ("app/custom.tnix", "existing")
+        ]
+        $ \root -> do
+          output <- executeCommand (Scaffold (Just root)) >>= expectRight
+          TextIO.readFile (root </> "app/custom.tnix") `shouldReturn` "existing"
+          doesFileExist (root </> "decls/builtins.d.tnix") `shouldReturn` True
+          Text.isInfixOf "skipped" output `shouldBe` True
+          Text.isInfixOf "builtins.d.tnix" output `shouldBe` True
+
+    it "respects builtins = false when scaffolding" $
+      withTempTree
+        [ ( "tnix.config.tnix",
+            source
+              [ "{",
+                "  name = \"demo\";",
+                "  builtins = false;",
+                "}"
+              ]
+          )
+        ]
+        $ \root -> do
+          _ <- executeCommand (Scaffold (Just root)) >>= expectRight
+          doesFileExist (root </> "src/main.tnix") `shouldReturn` True
+          doesFileExist (root </> "types/builtins.d.tnix") `shouldReturn` False
+
+    it "reports missing or invalid scaffold configs" $
+      withTempTree [] (\root -> executeCommand (Scaffold (Just root)) >>= (`expectLeftContaining` "missing tnix.config.tnix"))
+        >> withTempTree
+          [("tnix.config.tnix", "{ builtins = 1; }")]
+          (\root -> executeCommand (Scaffold (Just root)) >>= (`expectLeftContaining` "expected Bool for builtins"))
 
   describe "writeOutput" $
     it "creates parent directories before writing files" $

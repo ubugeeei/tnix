@@ -406,6 +406,28 @@ spec = describe "analysis" $ do
             `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("value", tInt)])))
       )
 
+  it "treats tnix.config.tnix as a workspace marker when loading support files" $
+    withTempTree
+      [ ( "tnix.config.tnix",
+          source
+            [ "{",
+              "  name = \"demo\";",
+              "  sourceDir = ./src;",
+              "  entry = ./src/main.tnix;",
+              "  declarationDir = ./types;",
+              "  builtins = false;",
+              "}"
+            ]
+        ),
+        ("types.d.tnix", "declare \"./lib.nix\" { default :: { value :: Int; }; };"),
+        ("src/nested/main.tnix", "import ../../lib.nix")
+      ]
+      ( \root -> do
+          analysis <- analyzeFile (root <> "/src/nested/main.tnix") >>= expectRight
+          analysisRoot analysis
+            `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("value", tInt)])))
+      )
+
   it "joins field types when selecting from unions of compatible records" $ do
     analysis <-
       analyzeText
