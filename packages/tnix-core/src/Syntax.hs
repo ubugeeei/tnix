@@ -70,7 +70,12 @@ data AmbientEntry = AmbientEntry
 --
 -- The set is intentionally small and currently covers the subset needed to
 -- prove the architecture: records, lambdas, applications, imports, selections,
--- lists, and local bindings.
+-- lists, local bindings, and explicit type assertions.
+--
+-- 'ECast' models TypeScript-style `expr as Type` assertions. The checker treats
+-- them as an explicit user-directed boundary: casts may widen, narrow, or cross
+-- a gradual boundary, but they still remain type-only syntax and are erased
+-- back to plain `.nix`.
 data Expr
   = EVar Name
   | EString Name
@@ -86,6 +91,7 @@ data Expr
   | ESelect Expr [Name]
   | EIf Expr Expr Expr
   | EList [Expr]
+  | ECast Expr Type
   deriving (Eq, Show)
 
 -- | Lambda binder pattern.

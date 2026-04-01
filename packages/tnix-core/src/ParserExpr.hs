@@ -60,7 +60,7 @@ ambientEntry = do
 
 -- | Parse any expression form supported by the prototype.
 expressionParser :: Parser Expr
-expressionParser = choice [ifParser, letParser, try lambdaParser, applicationParser]
+expressionParser = choice [ifParser, letParser, try lambdaParser, castParser]
 
 -- | Parse a Nix-style conditional expression.
 ifParser :: Parser Expr
@@ -104,6 +104,17 @@ lambdaParser = do
   pattern' <- patternParser
   _ <- symbol ":"
   ELambda pattern' <$> expressionParser
+
+-- | Parse TypeScript-style `expr as Type` chains.
+--
+-- Casts bind looser than application and field selection, so `f x as Int`
+-- means `(f x) as Int`, while casting larger control-flow expressions still
+-- requires parentheses.
+castParser :: Parser Expr
+castParser = do
+  base <- applicationParser
+  casts <- many (reserved "as" *> typeParser)
+  pure (foldl ECast base casts)
 
 -- | Parse left-associated application chains.
 applicationParser :: Parser Expr
@@ -153,7 +164,11 @@ attrParser = try inheritParser <|> fieldParser
 listParser :: Parser Expr
 listParser = EList <$> brackets (many listItem)
   where
-    listItem = choice [ifParser, letParser, try lambdaParser, postfixParser]
+    listItem = choice [ifParser, letParser, try lambdaParser, listCastParser]
+    listCastParser = do
+      base <- postfixParser
+      casts <- many (reserved "as" *> typeParser)
+      pure (foldl ECast base casts)
 
 -- | Parse a lambda binder pattern with an optional inline annotation.
 patternParser :: Parser Pattern
