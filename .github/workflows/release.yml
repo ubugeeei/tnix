@@ -55,11 +55,37 @@ jobs:
             ./${{ matrix.archive }}
             ./${{ matrix.sha }}
 
+  build-vscode-extension:
+    name: Build VS Code Extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install workspace dependencies
+        run: nix develop --accept-flake-config --command pnpm install --frozen-lockfile
+
+      - name: Package VS Code extension
+        run: nix develop --accept-flake-config --command bash -lc 'pnpm --filter tnix build && pnpm --filter tnix exec vsce package --no-dependencies --out ../../tnix-vscode-${{ github.ref_name }}.vsix'
+
+      - name: Upload VS Code extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-vscode
+          path: ./tnix-vscode-${{ github.ref_name }}.vsix
+
   publish-release:
     name: Publish Release
     runs-on: ubuntu-latest
     needs:
       - build-assets
+      - build-vscode-extension
     steps:
       - name: Download built artifacts
         uses: actions/download-artifact@v4

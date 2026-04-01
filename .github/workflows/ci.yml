@@ -48,5 +48,8 @@ jobs:
       - name: Build flake packages
         run: nix build .#tnix .#tnix-lsp
 
+      - name: Package the VS Code extension
+        run: nix develop --accept-flake-config --command bash -lc 'pnpm --filter tnix build && pnpm --filter tnix exec vsce package --no-dependencies --out /tmp/tnix-ci.vsix'
+
       - name: Run the full verification suite
         run: nix develop --accept-flake-config --command vp run check
