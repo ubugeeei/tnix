@@ -9,7 +9,8 @@
 -- tnix's TypeScript-inspired strategy where types are erased before runtime and
 -- may remain partially unresolved for a while.
 module Type
-  ( LiteralType (..),
+  ( Kind (..),
+    LiteralType (..),
     Name,
     Scheme (..),
     Type (..),
@@ -54,6 +55,17 @@ type Name = Text
 -- declaration emission, which lets the checker preserve precise information
 -- until widening becomes necessary.
 data LiteralType = LBool Bool | LInt Integer | LString Text
+  deriving (Eq, Ord, Show)
+
+-- | The lightweight kind language used to validate higher-kinded types.
+--
+-- tnix does not surface kinds in source syntax yet, but it still infers them
+-- so aliases such as `Compose f g a = f (g a)` are accepted while mistakes like
+-- `Int String` are rejected early.
+data Kind
+  = KType
+  | KFun Kind Kind
+  | KMeta Int
   deriving (Eq, Ord, Show)
 
 -- | The tnix type language.

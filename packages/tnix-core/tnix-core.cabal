@@ -16,6 +16,7 @@ library
     , Compile
     , Driver
     , Emit
+    , Kind
     , Parser
     , ParserExpr
     , ParserLexer
@@ -47,6 +48,7 @@ common spec-defaults
     , Compile
     , Driver
     , Emit
+    , Kind
     , Parser
     , ParserExpr
     , ParserLexer
@@ -78,6 +80,11 @@ test-suite tnix-subtyping-spec
   import: spec-defaults
   type: exitcode-stdio-1.0
   main-is: Subtyping.spec.hs
+
+test-suite tnix-kind-spec
+  import: spec-defaults
+  type: exitcode-stdio-1.0
+  main-is: Kind.spec.hs
 
 test-suite tnix-driver-spec
   import: spec-defaults

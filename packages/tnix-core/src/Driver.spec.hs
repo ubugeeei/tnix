@@ -78,6 +78,23 @@ spec = describe "analysis" $ do
     analysisRoot analysis
       `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("label", tString), ("value", tInt)])))
 
+  it "supports higher-kinded aliases in ambient declarations and signatures" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "type Id f = f;",
+              "type Apply f a = f a;",
+              "declare \"./lib.nix\" { default :: Apply (Id List) Int; };",
+              "let",
+              "  value :: Apply (Id List) Int;",
+              "  value = import ./lib.nix;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Apply (Id List) Int"
+
   it "treats imports without declarations as dynamic for incremental adoption" $ do
     analysis <- analyzeText "main.tnix" "import ./unknown.nix" >>= expectRight
     analysisRoot analysis `shouldBe` Just (Scheme [] tDynamic)
@@ -124,6 +141,19 @@ spec = describe "analysis" $ do
       >>= (`expectLeftContaining` "duplicate bindings")
     analyzeText "main.tnix" (source ["let", "  value :: Int;", "  value :: String;", "  value = 1;", "in value"])
       >>= (`expectLeftContaining` "duplicate signatures")
+
+  it "rejects passing concrete types to higher-kinded parameters" $
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "type Twice f a = f (f a);",
+            "let",
+            "  bad :: Twice Int String;",
+            "  bad = 1;",
+            "in bad"
+          ]
+      )
+      >>= (`expectLeftContaining` "kind mismatch")
 
   it "rejects missing bindings and explicit signature mismatches" $ do
     analyzeText "main.tnix" (source ["let", "  value :: Int;", "in 1"])
