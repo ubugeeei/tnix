@@ -1,0 +1,169 @@
+# Curated aliases for popular community flakes.
+#
+# These are intentionally "surface" types rather than exhaustive encodings.
+# The goal is to make common imports pleasant to annotate, in the same spirit
+# that DefinitelyTyped focuses on the public API developers actually touch.
+#
+# Typical usage:
+# declare "./devenv.nix" { default :: DevenvFlake; };
+# declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
+# declare "./pre-commit-hooks.nix" { default :: PreCommitHooksFlake; };
+
+type DevenvLib = {
+  mkShell :: dynamic -> dynamic;
+  mkTest :: dynamic -> dynamic;
+};
+
+type DevenvFlake = {
+  lib :: DevenvLib;
+  modules :: {
+    default :: dynamic;
+  };
+  templates :: {
+    default :: NixFlakeTemplate;
+  };
+};
+
+type TreefmtNixEvalResult = {
+  config :: {
+    build :: {
+      check :: NixpkgsDerivation;
+      wrapper :: Path | NixpkgsDerivation;
+    };
+  };
+};
+
+type TreefmtNixLib = {
+  evalModule :: NixpkgsPkgs -> dynamic -> TreefmtNixEvalResult;
+};
+
+type TreefmtNixFlake = {
+  lib :: TreefmtNixLib;
+  flakeModule :: dynamic;
+  formatter :: NixFlakeSystemOutputs dynamic;
+};
+
+type PreCommitHooksRunArgs = {
+  src :: Path | dynamic;
+  hooks :: dynamic;
+};
+
+type PreCommitHooksRunResult = {
+  shellHook :: String;
+  enabledPackages :: List dynamic;
+  configFile :: Path | Null;
+};
+
+type PreCommitHooksLib = {
+  run :: PreCommitHooksRunArgs -> PreCommitHooksRunResult;
+};
+
+type PreCommitHooksFlake = {
+  lib :: NixFlakeSystemOutputs PreCommitHooksLib;
+  flakeModule :: dynamic;
+};
+
+type CraneLib = {
+  buildPackage :: dynamic -> NixpkgsDerivation;
+  cargoClippy :: dynamic -> NixpkgsDerivation;
+  cargoDoc :: dynamic -> NixpkgsDerivation;
+  cargoFmt :: dynamic -> NixpkgsDerivation;
+  cargoNextest :: dynamic -> NixpkgsDerivation;
+  cargoTest :: dynamic -> NixpkgsDerivation;
+};
+
+type CraneFlake = {
+  lib :: NixFlakeSystemOutputs CraneLib;
+  mkLib :: NixpkgsPkgs -> CraneLib;
+};
+
+type FenixToolchain = {
+  cargo :: NixpkgsPackage;
+  rustc :: NixpkgsPackage;
+  rustfmt :: NixpkgsPackage | Null;
+  clippy :: NixpkgsPackage | Null;
+};
+
+type FenixPackages = {
+  minimal :: FenixToolchain;
+  stable :: FenixToolchain;
+  latest :: FenixToolchain;
+  complete :: FenixToolchain;
+};
+
+type FenixFlake = {
+  packages :: NixFlakeSystemOutputs FenixPackages;
+};
+
+type DeployRsActivateLib = {
+  nixos :: dynamic -> dynamic;
+  custom :: dynamic -> dynamic;
+};
+
+type DeployRsLib = {
+  activate :: DeployRsActivateLib;
+  deployChecks :: dynamic -> dynamic;
+};
+
+type DeployRsFlake = {
+  lib :: NixFlakeSystemOutputs DeployRsLib;
+};
+
+type NixvimFlake = {
+  homeManagerModules :: {
+    default :: dynamic;
+    nixvim :: dynamic;
+  };
+  nixosModules :: {
+    default :: dynamic;
+    nixvim :: dynamic;
+  };
+  packages :: NixFlakeSystemOutputs dynamic;
+  legacyPackages :: NixFlakeSystemOutputs dynamic;
+};
+
+type SopsNixFlake = {
+  homeManagerModules :: {
+    default :: dynamic;
+    sops :: dynamic;
+  };
+  nixosModules :: {
+    default :: dynamic;
+    sops :: dynamic;
+  };
+  darwinModules :: {
+    default :: dynamic;
+    sops :: dynamic;
+  };
+};
+
+type AgenixFlake = {
+  packages :: NixFlakeSystemOutputs {
+    default :: NixpkgsPackage;
+    agenix :: NixpkgsPackage;
+  };
+  homeManagerModules :: {
+    default :: dynamic;
+    age :: dynamic;
+  };
+  nixosModules :: {
+    default :: dynamic;
+    age :: dynamic;
+  };
+};
+
+type DiskoFlake = {
+  nixosModules :: {
+    default :: dynamic;
+    disko :: dynamic;
+  };
+  packages :: NixFlakeSystemOutputs dynamic;
+};
+
+type ColmenaLib = {
+  makeHive :: dynamic -> dynamic;
+};
+
+type ColmenaFlake = {
+  lib :: ColmenaLib;
+};
