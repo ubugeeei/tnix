@@ -7,7 +7,7 @@ export default defineConfig({
         command: "vp run build:haskell && pnpm --filter @tnix/vscode build && vp run build:zed",
       },
       check: {
-        command: "vp run check:haskell && vp run test:haskell && pnpm --filter @tnix/vscode check && pnpm --filter @tnix/vscode test && vp run check:zed && vp run check:neovim",
+        command: "vp run check:haskell && vp run test:haskell && pnpm --filter @tnix/vscode check && pnpm --filter @tnix/vscode test && vp run check:zed && vp run test:zed && vp run check:neovim",
       },
       fmt: {
         command: "vp run fmt:haskell && pnpm --filter @tnix/vscode fmt",
@@ -32,6 +32,10 @@ export default defineConfig({
       },
       "check:zed": {
         command: "cargo check --manifest-path editors/zed/Cargo.toml",
+        cache: false,
+      },
+      "test:zed": {
+        command: "cargo test --manifest-path editors/zed/Cargo.toml",
         cache: false,
       },
       "check:neovim": {
