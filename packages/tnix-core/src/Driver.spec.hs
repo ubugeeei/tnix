@@ -102,6 +102,36 @@ spec = describe "analysis" $ do
     analysisRoot analysis
       `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("label", tString), ("value", tInt)])))
 
+  it "loads builtins declarations from ambient support files" $
+    withTempTree
+      [ ("flake.nix", "{}"),
+        ( "builtins.d.tnix",
+          source
+            [ "declare \"builtins\" {",
+              "  add :: Int -> Int -> Int;",
+              "  head :: forall a. List a -> a;",
+              "};"
+            ]
+        ),
+        ("app/main.tnix", "let sum = builtins.add 1 2; first = builtins.head [1 2]; in { inherit sum first; }")
+      ]
+      ( \root -> do
+          analysis <- analyzeFile (root <> "/app/main.tnix") >>= expectRight
+          analysisRoot analysis
+            `shouldBe`
+              Just
+                ( Scheme
+                    []
+                    ( TRecord
+                        ( Map.fromList
+                            [ ("first", TUnion [TLit (LInt 1), TLit (LInt 2)]),
+                              ("sum", tInt)
+                            ]
+                        )
+                    )
+                )
+      )
+
   it "supports higher-kinded aliases in ambient declarations and signatures" $ do
     analysis <-
       analyzeText
