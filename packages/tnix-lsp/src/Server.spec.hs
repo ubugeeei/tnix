@@ -47,9 +47,18 @@ spec = do
       uriPath "file:///tmp/type%20space/%E5%9E%8B.tnix"
         `shouldBe` "/tmp/type space/\x578b.tnix"
 
+    it "accepts localhost authorities emitted by some LSP clients" $
+      uriPath "file://localhost/tmp/main.tnix"
+        `shouldBe` "/tmp/main.tnix"
+
   describe "documentPath" $
     it "extracts the path from textDocument params" $
       documentPath (Just (object ["textDocument" .= object ["uri" .= ("file:///tmp/main.tnix" :: String)]]))
+        `shouldBe` Just "/tmp/main.tnix"
+
+  describe "documentPath localhost" $
+    it "normalizes localhost authorities in textDocument params" $
+      documentPath (Just (object ["textDocument" .= object ["uri" .= ("file://localhost/tmp/main.tnix" :: String)]]))
         `shouldBe` Just "/tmp/main.tnix"
 
   describe "applyContentChanges" $ do

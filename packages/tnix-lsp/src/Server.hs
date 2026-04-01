@@ -158,7 +158,7 @@ pathUri :: FilePath -> Text
 pathUri file = "file://" <> percentEncode (T.pack file)
 
 uriPath :: Text -> FilePath
-uriPath text = T.unpack (percentDecode (fromMaybe text (T.stripPrefix "file://" text)))
+uriPath text = T.unpack (percentDecode (stripAuthority (fromMaybe text (T.stripPrefix "file://" text))))
 
 documentPath :: Maybe Value -> Maybe FilePath
 documentPath params = do
@@ -242,3 +242,7 @@ percentDecode text =
       | isHexDigit a && isHexDigit b = fromIntegral (digitToInt a * 16 + digitToInt b) : decodeBytes rest
     decodeBytes (char : rest) = BS.unpack (TextEncoding.encodeUtf8 (T.singleton char)) <> decodeBytes rest
     decodeBytes [] = []
+
+stripAuthority :: Text -> Text
+stripAuthority path =
+  fromMaybe path (T.stripPrefix "localhost" path)
