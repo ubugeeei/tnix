@@ -1,23 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | Minimal JSON-RPC/LSP bridge for tnix.
+-- | JSON-RPC/LSP bridge for tnix.
 --
--- This server intentionally implements only the core interactions needed to
--- prove the architecture: opening/changing documents, diagnostics, and hover.
--- It delegates all semantic work to 'Driver'.
+-- The server keeps protocol framing and stdio orchestration here while pushing
+-- semantic behavior into the core driver and the testable 'Session' helpers.
+-- That makes hover, diagnostics, completion, and jump-to-definition available
+-- to real editors without burying the logic inside an opaque event loop.
 module Main (main) where
 
 import Control.Monad (forever)
-import Data.Aeson
 import Control.Exception (IOException, try)
+import Data.Aeson
 import Data.IORef
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text.IO qualified as TIO
 import System.Exit (exitSuccess)
 import System.IO (stdin, stdout)
 import Driver (Analysis (..), analyzeText)
 import Session qualified
-import Server (asText, clearDiagnostics, clientCapabilities, field, notify, publishDiagnostics, readMessage, respond)
+import Server (asText, clearDiagnostics, clientCapabilities, field, notify, publishDiagnostics, publishDiagnosticsWithContent, readMessage, respond)
 
 -- | Start the stdio event loop and keep the latest document text in memory.
 main :: IO ()
@@ -35,20 +37,26 @@ handle ref msg = case field "method" msg >>= asText of
   Just "textDocument/didChange" -> update ref msg >>= publish
   Just "textDocument/didClose" -> closeDocument ref msg
   Just "textDocument/hover" -> hover ref msg >>= respond stdout msg
+  Just "textDocument/completion" -> completion ref msg >>= respond stdout msg
+  Just "textDocument/definition" -> definition ref msg >>= respond stdout msg
+  Just "textDocument/declaration" -> definition ref msg >>= respond stdout msg
   _ -> pure ()
 
 -- | Update the in-memory copy of a document and re-run analysis.
-update :: IORef Session.Documents -> Value -> IO (FilePath, Either String Analysis)
+update :: IORef Session.Documents -> Value -> IO (FilePath, Maybe Text, Either String Analysis)
 update ref msg = do
   docs <- readIORef ref
   (docs', file, result) <- Session.updateDocuments readFileSafe analyzeText docs msg
   writeIORef ref docs'
-  pure (file, result)
+  pure (file, Map.lookup file docs', result)
 
 -- | Publish diagnostics for the latest analysis result.
-publish :: (FilePath, Either String Analysis) -> IO ()
-publish (file, result) =
-  notify stdout "textDocument/publishDiagnostics" (publishDiagnostics file result)
+publish :: (FilePath, Maybe Text, Either String Analysis) -> IO ()
+publish (file, content, result) =
+  notify
+    stdout
+    "textDocument/publishDiagnostics"
+    (maybe (publishDiagnostics file result) (\text -> publishDiagnosticsWithContent file text result) content)
 
 -- | Drop a document from the in-memory cache and clear its diagnostics.
 closeDocument :: IORef Session.Documents -> Value -> IO ()
@@ -65,6 +73,18 @@ hover :: IORef Session.Documents -> Value -> IO Value
 hover ref msg = do
   docs <- readIORef ref
   Session.hoverDocument readFileSafe analyzeText docs msg
+
+-- | Compute completion results at the requested position.
+completion :: IORef Session.Documents -> Value -> IO Value
+completion ref msg = do
+  docs <- readIORef ref
+  Session.completionDocument readFileSafe analyzeText docs msg
+
+-- | Resolve local or ambient definitions for the requested position.
+definition :: IORef Session.Documents -> Value -> IO Value
+definition ref msg = do
+  docs <- readIORef ref
+  Session.definitionDocument readFileSafe analyzeText docs msg
 
 readFileSafe :: FilePath -> IO (Either String Text)
 readFileSafe file = do

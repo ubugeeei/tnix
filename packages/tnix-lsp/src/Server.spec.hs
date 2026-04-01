@@ -6,7 +6,10 @@ import Data.Aeson
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as B8
+import Data.Foldable (toList)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
+import Data.Text (Text)
 import Driver (Analysis (..))
 import Server
 import System.Directory (getTemporaryDirectory, removeFile)
@@ -20,9 +23,18 @@ main = hspec spec
 spec :: Spec
 spec = do
   describe "clientCapabilities" $
-    it "advertises incremental sync with open/close support" $
+    it "advertises hover, completion, definition, and incremental sync support" $
       clientCapabilities
-        `shouldBe` object ["capabilities" .= object ["hoverProvider" .= True, "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]]]
+        `shouldBe` object
+          [ "capabilities"
+              .= object
+                [ "hoverProvider" .= True,
+                  "completionProvider" .= object ["triggerCharacters" .= ["." :: String]],
+                  "definitionProvider" .= True,
+                  "declarationProvider" .= True,
+                  "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]
+                ]
+          ]
 
   describe "contentLengthFromHeaders" $ do
     it "finds content length regardless of header order or casing" $
@@ -132,6 +144,20 @@ spec = do
       clearDiagnostics "/tmp/main.tnix"
         `shouldBe` object ["uri" .= ("file:///tmp/main.tnix" :: String), "diagnostics" .= ([] :: [Value])]
 
+  describe "publishDiagnosticsWithContent" $ do
+    it "highlights unbound names using the token span in the current buffer" $
+      diagnosticSpan (publishDiagnosticsWithContent "/tmp/main.tnix" "missing" (Left "unbound name: \"missing\""))
+        `shouldBe` Just (0, 0, 7)
+
+    it "uses parser coordinates when a parse error includes line and column data" $
+      diagnosticSpan
+        ( publishDiagnosticsWithContent
+            "/tmp/main.tnix"
+            "ok\n  broken"
+            (Left "/tmp/main.tnix:2:3:\n  |\n2 |   broken\n  |   ^")
+        )
+        `shouldBe` Just (1, 2, 8)
+
   describe "hoverResult" $
     it "prefers the hovered symbol type and falls back to the root type" $ do
       hoverResult (Right successAnalysis) "box" 0 1
@@ -140,6 +166,17 @@ spec = do
         `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\nInt\n```" :: String)]]
       hoverResult (Left "type mismatch") "box" 0 0
         `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\ntype mismatch\n```" :: String)]]
+
+  describe "completionResult" $ do
+    it "offers top-level symbols, builtins, and protocol-safe metadata" $
+      completionLabels (completionResult (Right completionAnalysis) "b" 0 1)
+        `shouldBe` ["box", "builtins"]
+
+    it "offers record fields after a dotted access and filters by prefix" $ do
+      completionLabels (completionResult (Right completionAnalysis) "box." 0 4)
+        `shouldBe` ["alpha", "beta"]
+      completionLabels (completionResult (Right completionAnalysis) "box.al" 0 6)
+        `shouldBe` ["alpha"]
 
   describe "framing" $ do
     it "writes a Content-Length header followed by a JSON body" $
@@ -158,19 +195,65 @@ spec = do
         hFlush handle
         hSeek handle AbsoluteSeek 0
         readMessage handle `shouldReturn` Just (object ["jsonrpc" .= ("2.0" :: String)])
-  where
-    successAnalysis =
-      Analysis
-        { analysisProgram = error "unused in server tests",
-          analysisRoot = Just (Scheme [] tInt),
-          analysisBindings = Map.fromList [("box", Scheme [] tString)]
-        }
-    rootOnlyAnalysis =
-      Analysis
-        { analysisProgram = error "unused in server tests",
-          analysisRoot = Just (Scheme [] tInt),
-          analysisBindings = Map.empty
-        }
+
+successAnalysis :: Analysis
+successAnalysis =
+  Analysis
+    { analysisProgram = error "unused in server tests",
+      analysisRoot = Just (Scheme [] tInt),
+      analysisBindings = Map.fromList [("box", Scheme [] tString)],
+      analysisAliases = mempty,
+      analysisAmbient = mempty
+    }
+
+rootOnlyAnalysis :: Analysis
+rootOnlyAnalysis =
+  Analysis
+    { analysisProgram = error "unused in server tests",
+      analysisRoot = Just (Scheme [] tInt),
+      analysisBindings = Map.empty,
+      analysisAliases = mempty,
+      analysisAmbient = mempty
+    }
+
+completionAnalysis :: Analysis
+completionAnalysis =
+  Analysis
+    { analysisProgram = error "unused in server tests",
+      analysisRoot = Just (Scheme [] tInt),
+      analysisBindings =
+        Map.fromList
+          [ ( "box",
+              Scheme
+                []
+                ( TRecord
+                    ( Map.fromList
+                        [ ("alpha", tInt),
+                          ("beta", tString)
+                        ]
+                    )
+                )
+            )
+          ],
+      analysisAliases = mempty,
+      analysisAmbient =
+        Map.fromList
+          [ ( "builtins",
+              Scheme
+                []
+                ( TRecord
+                    ( Map.fromList
+                        [ ( "map",
+                            TForall
+                              ["a", "b"]
+                              (TFun Many (TFun Many (TVar "a") (TVar "b")) (TFun Many (tList (TVar "a")) (tList (TVar "b"))))
+                          )
+                        ]
+                    )
+                )
+            )
+          ]
+    }
 
 withTempHandle :: (Handle -> IO a) -> IO a
 withTempHandle action = do
@@ -180,3 +263,29 @@ withTempHandle action = do
   hClose handle
   removeFile path
   pure result
+
+completionLabels :: Value -> [Text]
+completionLabels value =
+  case value of
+    Object obj ->
+      case KeyMap.lookup "items" obj of
+        Just (Array items) ->
+          [ label
+            | Object item <- toList items,
+              Just (String label) <- [KeyMap.lookup "label" item]
+          ]
+        _ -> []
+    _ -> []
+
+diagnosticSpan :: Value -> Maybe (Int, Int, Int)
+diagnosticSpan value = do
+  Object obj <- pure value
+  Array diagnostics <- KeyMap.lookup "diagnostics" obj
+  Object diagnostic <- listToMaybe (toList diagnostics)
+  Object range <- KeyMap.lookup "range" diagnostic
+  Object start <- KeyMap.lookup "start" range
+  Object end <- KeyMap.lookup "end" range
+  Number startLine <- KeyMap.lookup "line" start
+  Number startChar <- KeyMap.lookup "character" start
+  Number endChar <- KeyMap.lookup "character" end
+  pure (floor startLine, floor startChar, floor endChar)

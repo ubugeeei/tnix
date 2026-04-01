@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | Testable JSON-RPC/LSP helpers for tnix.
@@ -7,6 +8,7 @@ module Server
     asText,
     clearDiagnostics,
     clientCapabilities,
+    completionResult,
     contentLengthFromHeaders,
     contentChanges,
     diag,
@@ -14,9 +16,11 @@ module Server
     field,
     firstChange,
     hoverResult,
+    location,
     notify,
     pathUri,
     publishDiagnostics,
+    publishDiagnosticsWithContent,
     readMessage,
     respond,
     send,
@@ -25,6 +29,8 @@ module Server
   )
 where
 
+import Control.Applicative ((<|>))
+import Control.Monad (foldM)
 import Data.Aeson
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
@@ -33,15 +39,19 @@ import Data.ByteString.Char8 qualified as B8
 import Data.ByteString.Lazy qualified as LBS
 import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isHexDigit, toLower, toUpper)
 import Data.Foldable (toList)
-import Data.List (stripPrefix)
+import Data.List (nub, sortOn, stripPrefix)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TextEncoding
+import Data.Text.Read qualified as TextRead
 import Driver (Analysis (..), lookupSymbolType)
 import Numeric (showHex)
 import Pretty (renderScheme)
+import Subtyping (lookupRecordField, resolveType)
 import System.IO (Handle, hIsEOF)
+import Type (Multiplicity (..), Name, Scheme (..), Type (..), TypeAlias, schemeFromAnnotation, tDynamic, tPath)
 
 field :: Text -> Value -> Maybe Value
 field key (Object obj) = KeyMap.lookup (Key.fromText key) obj
@@ -61,6 +71,9 @@ clientCapabilities =
     [ "capabilities"
         .= object
           [ "hoverProvider" .= True,
+            "completionProvider" .= object ["triggerCharacters" .= ["." :: Text]],
+            "definitionProvider" .= True,
+            "declarationProvider" .= True,
             "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]
           ]
     ]
@@ -116,6 +129,17 @@ diag err = object ["range" .= object ["start" .= pos, "end" .= pos], "severity" 
   where
     pos = object ["line" .= (0 :: Int), "character" .= (0 :: Int)]
 
+location :: FilePath -> Int -> Int -> Int -> Value
+location file lineNo startChar endChar =
+  object
+    [ "uri" .= pathUri file,
+      "range"
+        .= object
+          [ "start" .= object ["line" .= lineNo, "character" .= startChar],
+            "end" .= object ["line" .= lineNo, "character" .= endChar]
+          ]
+    ]
+
 publishDiagnostics :: FilePath -> Either String Analysis -> Value
 publishDiagnostics file result =
   object
@@ -125,6 +149,27 @@ publishDiagnostics file result =
           (\err -> [diag err])
           (const ([] :: [Value]))
           result
+    ]
+
+publishDiagnosticsWithContent :: FilePath -> Text -> Either String Analysis -> Value
+publishDiagnosticsWithContent file content result =
+  object
+    [ "uri" .= pathUri file,
+      "diagnostics"
+        .= either
+          (\err -> [diagnosticWithContent content err])
+          (const ([] :: [Value]))
+          result
+    ]
+
+completionResult :: Either String Analysis -> Text -> Int -> Int -> Value
+completionResult result content lineNo charNo =
+  object
+    [ "isIncomplete" .= False,
+      "items"
+        .= case result of
+          Left _ -> ([] :: [Value])
+          Right analysis -> map completionItem (completionCandidates analysis content lineNo charNo)
     ]
 
 hoverResult :: Either String Analysis -> Text -> Int -> Int -> Value
@@ -144,13 +189,236 @@ hoverResult result content lineNo charNo =
           let symbol = wordAt lineNo charNo content
            in maybe (maybe "No type information." renderScheme (analysisRoot analysis)) renderScheme (lookupSymbolType analysis symbol)
 
+diagnosticWithContent :: Text -> String -> Value
+diagnosticWithContent content err =
+  case diagnosticRange content (T.pack err) of
+    Just (lineNo, startChar, endChar) ->
+      object
+        [ "range"
+            .= object
+              [ "start" .= object ["line" .= lineNo, "character" .= startChar],
+                "end" .= object ["line" .= lineNo, "character" .= endChar]
+              ],
+          "severity" .= (1 :: Int),
+          "message" .= err
+        ]
+    Nothing -> diag err
+
+diagnosticRange :: Text -> Text -> Maybe (Int, Int, Int)
+diagnosticRange content err =
+  parserRange content err
+    <|> semanticRange content err
+
+parserRange :: Text -> Text -> Maybe (Int, Int, Int)
+parserRange content err = do
+  firstLine <- listToMaybe (T.lines err)
+  let numbers = mapMaybe parseDecimal (reverse (T.splitOn ":" firstLine))
+  case numbers of
+    colNo : lineNo : _ ->
+      let lineIx = max 0 (lineNo - 1)
+          charIx = max 0 (colNo - 1)
+       in Just (lineIx, charIx, charIx + tokenWidthAt content lineIx charIx)
+    _ -> Nothing
+  where
+    parseDecimal chunk =
+      case TextRead.decimal chunk of
+        Right (n, "") -> Just n
+        _ -> Nothing
+
+semanticRange :: Text -> Text -> Maybe (Int, Int, Int)
+semanticRange content err = do
+  needle <- firstQuoted err
+  if "missing field" `T.isPrefixOf` err
+    then findFieldRange content needle <|> findWordRange content needle
+    else
+      if any (`T.isPrefixOf` err) ["duplicate bindings", "duplicate signatures", "missing bindings for signatures"]
+        then findDefinitionRange content needle <|> findWordRange content needle
+        else findWordRange content needle
+
+firstQuoted :: Text -> Maybe Text
+firstQuoted text = do
+  (_, suffix) <- guardBreak (T.breakOn "\"" text)
+  let rest = T.drop 1 suffix
+      (quoted, trailing) = T.breakOn "\"" rest
+  if T.null trailing then Nothing else Just quoted
+  where
+    guardBreak pair@(_, suffix)
+      | T.null suffix = Nothing
+      | otherwise = Just pair
+
+completionCandidates :: Analysis -> Text -> Int -> Int -> [(Text, Scheme)]
+completionCandidates analysis content lineNo charNo =
+  case completionContext lineNo charNo content of
+    ([], prefix) -> filterByPrefix prefix (topLevelCandidates analysis)
+    (path, prefix) ->
+      case resolveChainType analysis path of
+        Just ty -> filterByPrefix prefix (recordFieldCandidates (analysisAliases analysis) ty)
+        Nothing -> []
+
+completionContext :: Int -> Int -> Text -> ([Text], Text)
+completionContext lineNo charNo content =
+  let fragment = completionFragment lineNo charNo content
+      parts = T.splitOn "." fragment
+   in case reverse parts of
+        [] -> ([], "")
+        partial : revPath -> (filter (not . T.null) (reverse revPath), partial)
+
+completionFragment :: Int -> Int -> Text -> Text
+completionFragment lineNo charNo content =
+  case drop lineNo (T.lines content) of
+    line : _ -> T.takeWhileEnd completionChar (T.take charNo line)
+    _ -> ""
+
+completionChar :: Char -> Bool
+completionChar char = wordChar char || char == '.'
+
+wordChar :: Char -> Bool
+wordChar char =
+  char == '_'
+    || char == '-'
+    || char == '\''
+    || char == '?'
+    || char == '!'
+    || char `elem` ['0' .. '9']
+    || char `elem` ['A' .. 'Z']
+    || char `elem` ['a' .. 'z']
+
+topLevelCandidates :: Analysis -> [(Text, Scheme)]
+topLevelCandidates analysis =
+  sortOn fst . dedupeByLabel $
+    builtinsCandidate
+      <> defaultCandidate
+      <> importCandidate
+      <> Map.toList (analysisBindings analysis)
+  where
+    builtinsCandidate = maybe [] (\scheme -> [("builtins", scheme)]) (Map.lookup "builtins" (analysisAmbient analysis))
+    defaultCandidate = maybe [] (\scheme -> [("default", scheme)]) (analysisRoot analysis)
+    importCandidate = [("import", Scheme [] (TFun Many tPath tDynamic))]
+
+recordFieldCandidates :: Map.Map Name TypeAlias -> Type -> [(Text, Scheme)]
+recordFieldCandidates aliases ty =
+  sortOn fst $
+    [ (name, schemeFromAnnotation fieldTy)
+      | (name, fieldTy) <- accessibleFields aliases ty
+    ]
+
+accessibleFields :: Map.Map Name TypeAlias -> Type -> [(Text, Type)]
+accessibleFields aliases ty =
+  case resolveType aliases ty of
+    TRecord fields -> Map.toList fields
+    TUnion members ->
+      let names = nub (concatMap (map fst . accessibleFields aliases) members)
+       in mapMaybe (\name -> fmap (\fieldTy -> (name, fieldTy)) (lookupRecordField aliases ty name)) names
+    _ -> []
+
+resolveChainType :: Analysis -> [Text] -> Maybe Type
+resolveChainType analysis = \case
+  [] -> schemeType <$> analysisRoot analysis
+  headName : rest -> do
+    scheme <- resolveSymbol analysis headName
+    foldM (lookupRecordField (analysisAliases analysis)) (schemeType scheme) rest
+
+resolveSymbol :: Analysis -> Text -> Maybe Scheme
+resolveSymbol analysis name
+  | name == "builtins" = Map.lookup "builtins" (analysisAmbient analysis)
+  | name == "import" = Just (Scheme [] (TFun Many tPath tDynamic))
+  | otherwise = lookupSymbolType analysis name
+
+filterByPrefix :: Text -> [(Text, Scheme)] -> [(Text, Scheme)]
+filterByPrefix prefix = filter (\(label, _) -> T.null prefix || prefix `T.isPrefixOf` label)
+
+dedupeByLabel :: [(Text, Scheme)] -> [(Text, Scheme)]
+dedupeByLabel =
+  Map.toList . Map.fromListWith (\left _ -> left)
+
+completionItem :: (Text, Scheme) -> Value
+completionItem (label, scheme) =
+  object
+    [ "label" .= label,
+      "kind" .= completionKind (schemeType scheme),
+      "detail" .= renderScheme scheme
+    ]
+  where
+    completionKind ty =
+      case ty of
+        TFun {} -> (3 :: Int)
+        _ -> (6 :: Int)
+
+findDefinitionRange :: Text -> Text -> Maybe (Int, Int, Int)
+findDefinitionRange content symbol =
+  listToMaybe $
+    mapMaybe
+      (\(lineNo, line) -> fmap (\(startChar, endChar) -> (lineNo, startChar, endChar)) (definitionSpan line symbol))
+      (zip [0 ..] (T.lines content))
+
+definitionSpan :: Text -> Text -> Maybe (Int, Int)
+definitionSpan line symbol =
+  let stripped = T.stripStart line
+      indent = T.length line - T.length stripped
+      candidates =
+        [ "type " <> symbol,
+          symbol <> "::",
+          symbol <> " ::",
+          symbol <> "=",
+          symbol <> " ="
+        ]
+   in listToMaybe
+        [ (indent + startChar, indent + startChar + T.length symbol)
+          | candidate <- candidates,
+            let (prefix, suffix) = T.breakOn candidate stripped,
+            not (T.null suffix),
+            let startChar = T.length prefix + if "type " `T.isPrefixOf` candidate then 5 else 0
+        ]
+
+findFieldRange :: Text -> Text -> Maybe (Int, Int, Int)
+findFieldRange content symbol =
+  listToMaybe $
+    mapMaybe
+      (\(lineNo, line) -> fmap (\startChar -> (lineNo, startChar, startChar + T.length symbol)) (fieldSpan line symbol))
+      (zip [0 ..] (T.lines content))
+
+fieldSpan :: Text -> Text -> Maybe Int
+fieldSpan line symbol = do
+  (prefix, _) <- listToMaybe (T.breakOnAll ("." <> symbol) line)
+  pure (T.length prefix + 1)
+
+findWordRange :: Text -> Text -> Maybe (Int, Int, Int)
+findWordRange content symbol =
+  listToMaybe $
+    mapMaybe
+      (\(lineNo, line) -> fmap (\startChar -> (lineNo, startChar, startChar + T.length symbol)) (wordSpan line symbol))
+      (zip [0 ..] (T.lines content))
+
+wordSpan :: Text -> Text -> Maybe Int
+wordSpan line symbol =
+  listToMaybe $
+    mapMaybe validOffset offsets
+  where
+    offsets = map (T.length . fst) (T.breakOnAll symbol line)
+    validOffset startChar =
+      if boundary (startChar - 1) && boundary (startChar + T.length symbol)
+        then Just startChar
+        else Nothing
+    boundary ix
+      | ix < 0 = True
+      | ix >= T.length line = True
+      | otherwise = not (wordChar (T.index line ix))
+
+tokenWidthAt :: Text -> Int -> Int -> Int
+tokenWidthAt content lineNo charNo =
+  case drop lineNo (T.lines content) of
+    line : _ ->
+      let width = T.length (T.takeWhile wordChar (T.drop charNo line))
+       in max 1 width
+    _ -> 1
+
 wordAt :: Int -> Int -> Text -> Text
 wordAt lineNo charNo content =
   case drop lineNo (T.lines content) of
     line : _ -> let (a, b) = T.splitAt charNo line in takeWordEnd a <> takeWordStart b
     _ -> "default"
   where
-    ok c = c == '_' || c == '-' || c == '\'' || c == '.' || c == '?' || c == '!' || c `elem` ['0' .. '9'] || c `elem` ['A' .. 'Z'] || c `elem` ['a' .. 'z']
+    ok c = completionChar c
     takeWordEnd = T.reverse . T.takeWhile ok . T.reverse
     takeWordStart = T.takeWhile ok
 

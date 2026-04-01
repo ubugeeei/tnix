@@ -2,13 +2,19 @@
 
 module Main (main) where
 
+import Control.Exception (bracket)
 import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Foldable (toList)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Text.IO qualified as TextIO
 import Driver (Analysis (..))
 import Session
+import System.Directory (createDirectory, createDirectoryIfMissing, getTemporaryDirectory, removeFile, removePathForcibly)
+import System.FilePath ((</>), takeDirectory)
+import System.IO (hClose, openTempFile)
 import Test.Hspec
 import Type
 
@@ -79,12 +85,40 @@ spec = do
     it "renders readable hover errors when reading from disk fails" $ do
       hover <- hoverDocument (\_ -> pure (Left "boom")) analyzeStub mempty (hoverMessage "/tmp/main.tnix" 0 0)
       hoverText hover `shouldBe` "```tnix\nboom\n```"
+
+  describe "completionDocument" $ do
+    it "returns field completions from the current analyzed buffer" $ do
+      completions <- completionDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", "box.")]) (completionMessage "/tmp/main.tnix" 0 4)
+      completionLabels completions `shouldBe` ["alpha", "beta"]
+
+    it "returns an empty completion list when loading the document fails" $ do
+      completions <- completionDocument (\_ -> pure (Left "boom")) analyzeCompletion mempty (completionMessage "/tmp/main.tnix" 0 0)
+      completionLabels completions `shouldBe` []
+
+  describe "definitionDocument" $ do
+    it "jumps to the local binding of the selected symbol" $ do
+      let content = Text.unlines ["let", "  value = 1;", "in value"]
+      definition <- definitionDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (definitionMessage "/tmp/main.tnix" 2 6)
+      definitionLocation definition `shouldBe` Just ("/tmp/main.tnix", 1, 2, 7)
+
+    it "jumps builtins members into the nearest ambient declaration file" $
+      withTempTree
+        [ ("builtins.d.tnix", Text.unlines ["declare \"builtins\" {", "  map :: Int -> Int;", "};"]),
+          ("app/main.tnix", "builtins.map")
+        ]
+        ( \root -> do
+            let file = root </> "app/main.tnix"
+            definition <- definitionDocument readFileStub analyzeCompletion mempty (definitionMessage file 0 10)
+            definitionLocation definition `shouldBe` Just (root </> "builtins.d.tnix", 1, 2, 5)
+        )
   where
     readNever _ = expectationFailure "unexpected file read" >> fail "unexpected file read"
+    readFileStub = fmap Right . TextIO.readFile
     analyzeStub _ content
       | content == "1" = pure (Right intAnalysis)
       | content == "box" = pure (Right stringBindingAnalysis)
       | otherwise = pure (Right defaultAnalysis)
+    analyzeCompletion _ _ = pure (Right completionAnalysis)
     analyzeFailing _ content = pure (Left ("analysis failed for " <> showText content))
     showText = Text.unpack
 
@@ -93,7 +127,9 @@ intAnalysis =
   Analysis
     { analysisProgram = error "unused in session tests",
       analysisRoot = Just (Scheme [] tInt),
-      analysisBindings = Map.empty
+      analysisBindings = Map.empty,
+      analysisAliases = mempty,
+      analysisAmbient = mempty
     }
 
 defaultAnalysis :: Analysis
@@ -101,7 +137,9 @@ defaultAnalysis =
   Analysis
     { analysisProgram = error "unused in session tests",
       analysisRoot = Just (Scheme [] tInt),
-      analysisBindings = Map.fromList [("result", Scheme [] tInt)]
+      analysisBindings = Map.fromList [("result", Scheme [] tInt)],
+      analysisAliases = mempty,
+      analysisAmbient = mempty
     }
 
 stringBindingAnalysis :: Analysis
@@ -109,7 +147,33 @@ stringBindingAnalysis =
   Analysis
     { analysisProgram = error "unused in session tests",
       analysisRoot = Just (Scheme [] tInt),
-      analysisBindings = Map.fromList [("box", Scheme [] tString)]
+      analysisBindings = Map.fromList [("box", Scheme [] tString)],
+      analysisAliases = mempty,
+      analysisAmbient = mempty
+    }
+
+completionAnalysis :: Analysis
+completionAnalysis =
+  Analysis
+    { analysisProgram = error "unused in session tests",
+      analysisRoot = Just (Scheme [] tInt),
+      analysisBindings =
+        Map.fromList
+          [ ( "box",
+              Scheme
+                []
+                ( TRecord
+                    ( Map.fromList
+                        [ ("alpha", tInt),
+                          ("beta", tString)
+                        ]
+                    )
+                )
+            ),
+            ("value", Scheme [] tInt)
+          ],
+      analysisAliases = mempty,
+      analysisAmbient = mempty
     }
 
 openMessage :: FilePath -> Text -> Value
@@ -154,6 +218,12 @@ hoverMessage file lineNo charNo =
           ]
     ]
 
+completionMessage :: FilePath -> Int -> Int -> Value
+completionMessage = hoverMessage
+
+definitionMessage :: FilePath -> Int -> Int -> Value
+definitionMessage = hoverMessage
+
 replaceRange :: Int -> Int -> Int -> Int -> Text -> Value
 replaceRange startLine startChar endLine endChar text =
   object
@@ -176,3 +246,46 @@ hoverText value =
             _ -> "missing hover value"
         _ -> "missing hover contents"
     _ -> "unexpected hover payload"
+
+completionLabels :: Value -> [Text]
+completionLabels value =
+  case value of
+    Object obj ->
+      case KeyMap.lookup "items" obj of
+        Just (Array items) ->
+          [ label
+            | Object item <- toList items,
+              Just (String label) <- [KeyMap.lookup "label" item]
+          ]
+        _ -> []
+    _ -> []
+
+definitionLocation :: Value -> Maybe (FilePath, Int, Int, Int)
+definitionLocation value = do
+  Object obj <- pure value
+  String uri <- KeyMap.lookup "uri" obj
+  Object range <- KeyMap.lookup "range" obj
+  Object start <- KeyMap.lookup "start" range
+  Object end <- KeyMap.lookup "end" range
+  Number lineNo <- KeyMap.lookup "line" start
+  Number startChar <- KeyMap.lookup "character" start
+  Number endChar <- KeyMap.lookup "character" end
+  pure (Text.unpack (Text.drop 7 uri), floor lineNo, floor startChar, floor endChar)
+
+withTempTree :: [(FilePath, Text)] -> (FilePath -> IO a) -> IO a
+withTempTree files action = bracket createRoot removePathForcibly (\root -> writeTree root >> action root)
+  where
+    createRoot = do
+      tmp <- getTemporaryDirectory
+      (path, handle) <- openTempFile tmp "tnix-lsp-session"
+      hClose handle
+      removeFile path
+      createDirectory path
+      pure path
+    writeTree root =
+      mapM_
+        (\(relative, content) -> do
+           let path = root </> relative
+           createDirectoryIfMissing True (takeDirectory path)
+           TextIO.writeFile path content)
+        files
