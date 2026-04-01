@@ -59,4 +59,12 @@ After compilation, type information is erased and only ordinary Nix code remains
 
 ## Current Status
 
-The repository is still in the specification phase. The plan is to lock down the language design first, then fix the development environment with Nix, and finally implement the Haskell monorepo and `pnpm`-managed editor integrations on top of that spec.
+`tnix` is now in its first integrated toolchain release.
+
+- Haskell monorepo for parser, checker, compiler, emitter, CLI, and LSP
+- Nix-based development environment
+- `pnpm`-managed editor tooling
+- VS Code, Zed, and Neovim integrations
+- gradual typing with ambient declarations, HKT support, indexed `Vec` / `Matrix` / `Tensor`, and heterogeneous `Tuple`
+
+See [CHANGELOG.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/CHANGELOG.md) for the release history.
