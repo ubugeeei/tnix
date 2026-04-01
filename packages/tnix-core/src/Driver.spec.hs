@@ -505,3 +505,66 @@ spec = describe "analysis" $ do
           analysis <- analyzeFile (root <> "/app/main.tnix") >>= expectRight
           analysisRoot analysis `shouldBe` Just (Scheme [] tInt)
       )
+
+  it "suppresses binding errors with @tnix-ignore and falls back to dynamic" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  # @tnix-ignore",
+              "  value = missing;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "dynamic"
+    fmap renderScheme (Map.lookup "value" (analysisBindings analysis)) `shouldBe` Just "dynamic"
+
+  it "lets a signature-line @tnix-expected suppress the matching binding mismatch" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  # @tnix-expected",
+              "  value :: Int;",
+              "  value = \"oops\";",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Int"
+    fmap renderScheme (Map.lookup "value" (analysisBindings analysis)) `shouldBe` Just "Int"
+
+  it "suppresses root-expression failures with @tnix-ignore" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "# @tnix-ignore",
+              "missing"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "dynamic"
+
+  it "rejects unused @tnix-expected directives on bindings and roots" $ do
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  # @tnix-expected",
+            "  value = 1;",
+            "in value"
+          ]
+      )
+      >>= (`expectLeftContaining` "unused @tnix-expected directive on binding")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "# @tnix-expected",
+            "1"
+          ]
+      )
+      >>= (`expectLeftContaining` "unused @tnix-expected directive on root expression")
