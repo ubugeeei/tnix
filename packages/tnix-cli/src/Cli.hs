@@ -19,6 +19,7 @@ import Data.Text.IO qualified as TextIO
 import Driver (Analysis (..), analyzeFile, compileFile, emitFile)
 import Options.Applicative
 import Pretty (renderScheme)
+import Project (initProject, scaffoldProject)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
 
@@ -27,6 +28,8 @@ data Command
   = Compile FilePath (Maybe FilePath)
   | Check FilePath
   | Emit FilePath (Maybe FilePath)
+  | Init (Maybe FilePath)
+  | Scaffold (Maybe FilePath)
   deriving (Eq, Show)
 
 -- | Command-line parser definition.
@@ -36,13 +39,18 @@ commandParser =
     ( command "compile" (info compileP (progDesc "Compile .tnix to .nix"))
         <> command "check" (info checkP (progDesc "Type-check a .tnix file"))
         <> command "emit" (info emitP (progDesc "Emit a .d.tnix declaration file"))
+        <> command "init" (info initP (progDesc "Create tnix.config.tnix and starter files"))
+        <> command "scaffold" (info scaffoldP (progDesc "Create project files from tnix.config.tnix"))
     )
   where
     fileArg = strArgument (metavar "FILE")
+    dirArg = optional (strArgument (metavar "DIRECTORY"))
     outputOpt = optional (strOption (short 'o' <> long "output" <> metavar "OUTPUT"))
     compileP = Compile <$> fileArg <*> outputOpt
     checkP = Check <$> fileArg
     emitP = Emit <$> fileArg <*> outputOpt
+    initP = Init <$> dirArg
+    scaffoldP = Scaffold <$> dirArg
 
 -- | Extract the explicit destination path carried by a command, if any.
 --
@@ -55,6 +63,8 @@ commandOutputPath cmd =
     Compile _ output -> output
     Check _ -> Nothing
     Emit _ output -> output
+    Init _ -> Nothing
+    Scaffold _ -> Nothing
 
 -- | Execute one CLI command and return the rendered text payload.
 --
@@ -67,6 +77,8 @@ executeCommand cmd =
     Compile input _ -> compileFile input
     Check input -> fmap renderAnalysis <$> analyzeFile input
     Emit input _ -> emitFile input
+    Init target -> initProject target
+    Scaffold target -> scaffoldProject target
 
 -- | Pretty-print the inferred root and bindings for `tnix check`.
 renderAnalysis :: Analysis -> Text

@@ -12,6 +12,7 @@ synopsis:           CLI for tnix
 library
   exposed-modules:
       Cli
+    , Project
   hs-source-dirs: src
   build-depends:
       base >=4.19 && <5
@@ -41,6 +42,7 @@ test-suite tnix-cli-spec
   hs-source-dirs: src
   other-modules:
       Cli
+    , Project
   build-depends:
       base >=4.19 && <5
     , containers

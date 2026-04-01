@@ -207,6 +207,7 @@ hasWorkspaceMarker dir =
       [ doesFileExist (dir </> "flake.nix"),
         doesFileExist (dir </> "cabal.project"),
         doesFileExist (dir </> "pnpm-workspace.yaml"),
+        doesFileExist (dir </> "tnix.config.tnix"),
         doesDirectoryExist (dir </> ".git")
       ]
 
