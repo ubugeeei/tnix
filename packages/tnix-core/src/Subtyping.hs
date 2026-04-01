@@ -72,14 +72,22 @@ lookupRecordField env ty field =
 -- normalized union.
 joinTypes :: AliasEnv -> Type -> Type -> Type
 joinTypes env left right =
-  case (tensorView left', tensorView right') of
-    (Just (leftShape, leftElem), Just (rightShape, rightElem))
-      | leftShape == rightShape -> surfaceTensor leftShape (joinTypes env leftElem rightElem)
-      | otherwise ->
-          case (tensorListView left', tensorListView right') of
+  case (tupleView left', tupleView right') of
+    (Just leftItems, Just rightItems)
+      | length leftItems == length rightItems ->
+          TApp (TCon "Tuple") (TTypeList (zipWith (joinTypes env) leftItems rightItems))
+    _ ->
+      case (tensorView left', tensorView right') of
+        (Just (leftShape, leftElem), Just (rightShape, rightElem))
+          | leftShape == rightShape -> surfaceTensor leftShape (joinTypes env leftElem rightElem)
+          | otherwise ->
+              case (listView left', listView right') of
+                (Just leftList, Just rightList) -> joinTypes env leftList rightList
+                _ -> fallback
+        _ ->
+          case (listView left', listView right') of
             (Just leftList, Just rightList) -> joinTypes env leftList rightList
             _ -> fallback
-    _ -> fallback
   where
     left' = resolveType env left
     right' = resolveType env right
@@ -118,8 +126,16 @@ isSubtype env left right = go (resolveType env left) (resolveType env right)
     go (TTypeList xs) (TTypeList ys) = length xs == length ys && and (zipWith go xs ys)
     go _ TDynamic = True
     go TDynamic _ = False
+    go (TUnion leftMembers) (TUnion rightMembers) =
+      all (\member -> any (go member) rightMembers) leftMembers
     go a (TUnion members) = any (go a) members
     go (TUnion members) b = all (`go` b) members
+    go a b
+      | Just leftItems <- tupleView a,
+        Just rightItems <- tupleView b =
+          length leftItems == length rightItems && and (zipWith go leftItems rightItems)
+      | Just leftList <- tupleListView a =
+          go leftList b
     go a b
       | Just (leftShape, leftElem) <- tensorView a,
         Just (rightShape, rightElem) <- tensorView b =
@@ -138,3 +154,9 @@ surfaceTensor dims elemTy =
     [lenTy] -> TApp (TApp (TCon "Vec") lenTy) elemTy
     [rowsTy, colsTy] -> TApp (TApp (TApp (TCon "Matrix") rowsTy) colsTy) elemTy
     _ -> TApp (TApp (TCon "Tensor") (TTypeList dims)) elemTy
+
+listView :: Type -> Maybe Type
+listView ty =
+  case tupleListView ty of
+    Just listTy -> Just listTy
+    Nothing -> tensorListView ty

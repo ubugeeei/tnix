@@ -268,6 +268,7 @@ builtinKinds =
       ("Path", KType),
       ("String", KType),
       ("Tensor", KFun KType (KFun KType KType)),
+      ("Tuple", KFun KType KType),
       ("Vec", KFun KType (KFun KType KType))
     ]
 

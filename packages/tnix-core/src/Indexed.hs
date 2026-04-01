@@ -10,11 +10,13 @@ module Indexed
     normalizeIndexedType,
     tensorListView,
     tensorView,
+    tupleListView,
+    tupleView,
     validateProgramIndexedTypes,
   )
 where
 
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, mapMaybe)
 import Data.Text (Text)
 import Alias (collectApps)
 import Syntax (AmbientDecl (ambientEntries), AmbientEntry (ambientEntryType), AttrItem (..), Expr (..), LetItem (..), Pattern (..), Program (..))
@@ -25,13 +27,15 @@ inferListType joinElem members =
   case members of
     [] -> surfaceTensorType [TLit (LInt 0)] tDynamic
     _ ->
-      let views = tensorView . normalizeIndexedType <$> members
-          elemTy = foldl1 joinElem members
+      let normalized = normalizeIndexedType <$> members
+          views = tensorView <$> normalized
+          elemTy = foldl1 joinElem normalized
           lenTy = TLit (LInt (toInteger (length members)))
        in case sequence views >>= foldTensorMembers joinElem of
             Just (shape, baseTy) -> surfaceTensorType (lenTy : shape) baseTy
             Nothing
-              | all isNothing views -> surfaceTensorType [lenTy] elemTy
+              | all isNothing views && hasUniformSequenceFamily normalized -> surfaceTensorType [lenTy] elemTy
+              | all isNothing views -> tupleType normalized
               | otherwise -> tList elemTy
 
 normalizeIndexedType :: Type -> Type
@@ -63,6 +67,12 @@ tensorView ty =
     (TCon "Tensor", [TTypeList dims, elemTy]) -> Just (dims, elemTy)
     _ -> Nothing
 
+tupleView :: Type -> Maybe [Type]
+tupleView ty =
+  case collectApps ty of
+    (TCon "Tuple", [TTypeList items]) -> Just items
+    _ -> Nothing
+
 tensorListView :: Type -> Maybe Type
 tensorListView ty = do
   (dims, elemTy) <- tensorView (normalizeIndexedType ty)
@@ -75,6 +85,14 @@ tensorListView ty = do
                 (if null rest then elemTy else surfaceTensorType rest elemTy)
             )
         )
+
+tupleListView :: Type -> Maybe Type
+tupleListView ty = do
+  items <- tupleView (normalizeIndexedType ty)
+  pure $
+    case items of
+      [] -> surfaceTensorType [TLit (LInt 0)] tDynamic
+      _ -> tList (foldl1 joinTupleItems items)
 
 validateProgramIndexedTypes :: Program -> Either String ()
 validateProgramIndexedTypes program =
@@ -91,6 +109,9 @@ surfaceTensorType dims elemTy =
     [lenTy] -> TApp (TApp (TCon "Vec") lenTy) elemTy
     [rowsTy, colsTy] -> TApp (TApp (TApp (TCon "Matrix") rowsTy) colsTy) elemTy
     _ -> canonicalTensorType dims elemTy
+
+tupleType :: [Type] -> Type
+tupleType = TApp (TCon "Tuple") . TTypeList
 
 foldTensorMembers :: (Type -> Type -> Type) -> [([Type], Type)] -> Maybe ([Type], Type)
 foldTensorMembers joinElem = \case
@@ -137,6 +158,8 @@ validateType label ty =
     TUnion members -> traverse_ (validateType label) members
     TApp fun arg ->
       case collectApps (TApp fun arg) of
+        (TCon "Tuple", [TTypeList items]) ->
+          traverse_ (validateType label) items
         (TCon "Vec", [lenTy, elemTy]) ->
           validateNatType label "Vec length" lenTy *> validateType label elemTy
         (TCon "Matrix", [rowsTy, colsTy, elemTy]) ->
@@ -186,6 +209,25 @@ isObviouslyInvalidIndex = \case
 
 isPrimitiveTypeName :: Name -> Bool
 isPrimitiveTypeName name = name `elem` ["Bool", "Int", "List", "Null", "Path", "String"]
+
+hasUniformSequenceFamily :: [Type] -> Bool
+hasUniformSequenceFamily members =
+  case mapMaybe sequenceFamily members of
+    [] -> False
+    family : rest -> all (== family) rest
+
+sequenceFamily :: Type -> Maybe Name
+sequenceFamily = \case
+  TLit (LInt _) -> Just "Int"
+  TLit (LString _) -> Just "String"
+  TLit (LBool _) -> Just "Bool"
+  TCon name -> Just name
+  _ -> Nothing
+
+joinTupleItems :: Type -> Type -> Type
+joinTupleItems left right
+  | left == right = left
+  | otherwise = TUnion [left, right]
 
 traverse_ :: Foldable f => (a -> Either String b) -> f a -> Either String ()
 traverse_ step = foldr (\item acc -> step item *> acc) (Right ())

@@ -16,7 +16,7 @@ where
 
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
-import Indexed (tensorView)
+import Indexed (tensorView, tupleView)
 import Prettyprinter
 import Prettyprinter.Render.Text qualified as Render
 import Syntax
@@ -96,30 +96,33 @@ prettyAttr = \case
 
 prettyType :: Int -> Type -> Doc ann
 prettyType p ty =
-  case tensorView ty of
-    Just (dims, elemTy) ->
-      case dims of
-        [lenTy] -> parenIf (p > 2) ("Vec" <+> prettyType 3 lenTy <+> prettyType 3 elemTy)
-        [rowsTy, colsTy] -> parenIf (p > 2) ("Matrix" <+> prettyType 3 rowsTy <+> prettyType 3 colsTy <+> prettyType 3 elemTy)
-        _ -> parenIf (p > 2) ("Tensor" <+> prettyType 3 (TTypeList dims) <+> prettyType 3 elemTy)
+  case tupleView ty of
+    Just items -> parenIf (p > 2) ("Tuple" <+> prettyType 3 (TTypeList items))
     Nothing ->
-      case ty of
-        TVar name -> pretty name
-        TCon name -> pretty name
-        TMeta n -> pretty ("?" <> show n)
-        TLit (LString text) -> dquotes (pretty text)
-        TLit (LInt n) -> pretty n
-        TLit (LBool True) -> "true"
-        TLit (LBool False) -> "false"
-        TTypeList items -> "[" <+> hsep (prettyType 0 <$> items) <+> "]"
-        TDynamic -> "dynamic"
-        TFun a b -> parenIf (p > 0) (prettyType 1 a <+> "->" <+> prettyType 0 b)
-        TRecord fields -> vsep ["{", indent 2 (vsep [pretty k <+> "::" <+> prettyType 0 v <> ";" | (k, v) <- Map.toList fields]), "}"]
-        TUnion members -> parenIf (p > 1) (hsep (punctuate " |" (map (prettyType 2) members)))
-        TApp f x -> parenIf (p > 2) (prettyType 2 f <+> prettyType 3 x)
-        TForall vars body -> parenIf (p > 0) ("forall" <+> hsep (pretty <$> vars) <> "." <+> prettyType 0 body)
-        TConditional a b c d -> parenIf (p > 0) (prettyType 2 a <+> "extends" <+> prettyType 2 b <+> "?" <+> prettyType 0 c <+> ":" <+> prettyType 0 d)
-        TInfer name -> "infer" <+> pretty name
+      case tensorView ty of
+        Just (dims, elemTy) ->
+          case dims of
+            [lenTy] -> parenIf (p > 2) ("Vec" <+> prettyType 3 lenTy <+> prettyType 3 elemTy)
+            [rowsTy, colsTy] -> parenIf (p > 2) ("Matrix" <+> prettyType 3 rowsTy <+> prettyType 3 colsTy <+> prettyType 3 elemTy)
+            _ -> parenIf (p > 2) ("Tensor" <+> prettyType 3 (TTypeList dims) <+> prettyType 3 elemTy)
+        Nothing ->
+          case ty of
+            TVar name -> pretty name
+            TCon name -> pretty name
+            TMeta n -> pretty ("?" <> show n)
+            TLit (LString text) -> dquotes (pretty text)
+            TLit (LInt n) -> pretty n
+            TLit (LBool True) -> "true"
+            TLit (LBool False) -> "false"
+            TTypeList items -> "[" <+> hsep (prettyType 0 <$> items) <+> "]"
+            TDynamic -> "dynamic"
+            TFun a b -> parenIf (p > 0) (prettyType 1 a <+> "->" <+> prettyType 0 b)
+            TRecord fields -> vsep ["{", indent 2 (vsep [pretty k <+> "::" <+> prettyType 0 v <> ";" | (k, v) <- Map.toList fields]), "}"]
+            TUnion members -> parenIf (p > 1) (hsep (punctuate " |" (map (prettyType 2) members)))
+            TApp f x -> parenIf (p > 2) (prettyType 2 f <+> prettyType 3 x)
+            TForall vars body -> parenIf (p > 0) ("forall" <+> hsep (pretty <$> vars) <> "." <+> prettyType 0 body)
+            TConditional a b c d -> parenIf (p > 0) (prettyType 2 a <+> "extends" <+> prettyType 2 b <+> "?" <+> prettyType 0 c <+> ":" <+> prettyType 0 d)
+            TInfer name -> "infer" <+> pretty name
 
 parenIf :: Bool -> Doc ann -> Doc ann
 parenIf True = parens
