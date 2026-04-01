@@ -17,7 +17,7 @@ import Type
 programParser :: Parser Program
 programParser = do
   decls <- many declarationParser
-  expr <- optional expressionParser
+  expr <- optional (markCurrent expressionParser)
   pure
     Program
       { programAliases = [alias | Left alias <- decls],
@@ -77,7 +77,7 @@ ifParser = do
 letParser :: Parser Expr
 letParser = do
   reserved "let"
-  items <- many letItemParser
+  items <- many (markCurrent letItemParser)
   reserved "in"
   ELet items <$> expressionParser
 
@@ -163,3 +163,6 @@ patternParser = parens typed <|> (PVar <$> identifier <*> pure Nothing)
       name <- identifier
       _ <- symbol "::"
       PVar name . Just <$> typeParser
+
+markCurrent :: Parser a -> Parser (Marked a)
+markCurrent parser = Marked <$> directiveForCurrentLine <*> parser

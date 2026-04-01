@@ -25,7 +25,7 @@ import Type
 -- | Render an executable program back to plain Nix code.
 renderProgramAsNix :: Program -> Either Text Text
 renderProgramAsNix program =
-  maybe (Left "declaration-only files cannot be compiled to .nix") (Right . render . prettyExpr 0) (programExpr program)
+  maybe (Left "declaration-only files cannot be compiled to .nix") (Right . render . prettyExpr 0 . markedValue) (programExpr program)
 
 -- | Render a declaration file for a target path and exported entries.
 renderDeclarationFile :: FilePath -> [TypeAlias] -> [(Name, Type)] -> Text
@@ -79,7 +79,7 @@ prettyExpr p = \case
   EPath path -> pretty path
   ELambda (PVar name _) body -> parenIf (p > 0) (pretty name <> ":" <+> prettyExpr 0 body)
   EApp f x -> parenIf (p > 1) (prettyExpr 1 f <+> prettyExpr 2 x)
-  ELet items body -> vsep ["let", indent 2 (vsep (map prettyLet items)), "in" <+> prettyExpr 0 body]
+  ELet items body -> vsep ["let", indent 2 (vsep (map (prettyLet . markedValue) items)), "in" <+> prettyExpr 0 body]
   EAttrSet items -> vsep ["{", indent 2 (vsep (map prettyAttr items)), "}"]
   ESelect base names -> parenIf (p > 2) (prettyExpr 2 base <> foldMap (("." <>) . pretty) names)
   EIf a b c -> vsep ["if" <+> prettyExpr 0 a, "then" <+> prettyExpr 0 b, "else" <+> prettyExpr 0 c]

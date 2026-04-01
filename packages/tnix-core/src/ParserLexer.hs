@@ -6,8 +6,10 @@
 -- whitespace, comments, simple identifiers, and path literals instead of
 -- inventing a heavy token stream.
 module ParserLexer
-  ( Parser,
+  ( DirectiveTargets,
+    Parser,
     brackets,
+    directiveForCurrentLine,
     braces,
     float,
     identifier,
@@ -23,17 +25,28 @@ module ParserLexer
 where
 
 import Control.Monad (when)
+import Control.Monad.Reader (ReaderT, asks)
 import Data.Char (isAlphaNum, isLetter)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
+import Syntax (DiagnosticDirective)
 import Type (Name)
 
 -- | Parser type used throughout the frontend.
-type Parser = Parsec Void Text
+type DirectiveTargets = Map Int DiagnosticDirective
+type Parser = ReaderT DirectiveTargets (Parsec Void Text)
+
+-- | Look up whether the current source line is targeted by a directive comment.
+directiveForCurrentLine :: Parser (Maybe DiagnosticDirective)
+directiveForCurrentLine = do
+  lineNo <- unPos . sourceLine <$> getSourcePos
+  asks (Map.lookup lineNo)
 
 -- | Space consumer matching Nix-style comments.
 sc :: Parser ()

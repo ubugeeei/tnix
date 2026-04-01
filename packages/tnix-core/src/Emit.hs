@@ -23,7 +23,7 @@ emitDeclarationFile source program scheme =
   renderDeclarationFile (("./" <>) (replaceExtension (takeFileName source) "nix")) (programAliases program) entries
   where
     entries =
-      case (programExpr program, schemeType scheme, schemeVars scheme) of
+      case (markedValue <$> programExpr program, schemeType scheme, schemeVars scheme) of
         (Just (EAttrSet _), TRecord fields, []) -> Map.toList fields
         _ -> [("default", quantified)]
     quantified =

@@ -45,7 +45,7 @@ import Control.Monad (when)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Alias (collectApps)
-import Syntax (AmbientDecl (ambientEntries), AmbientEntry (ambientEntryType), AttrItem (..), Expr (..), LetItem (..), Pattern (..), Program (..))
+import Syntax (AmbientDecl (ambientEntries), AmbientEntry (ambientEntryType), AttrItem (..), Expr (..), LetItem (..), Marked (markedValue), Pattern (..), Program (..))
 import Type (LiteralType (..), Name, Type (..), TypeAlias (typeAliasBody), tDynamic, tFloat, tInt, tList, tNat, tNumber)
 
 -- | Infer the most precise sequence type that can be justified from a list
@@ -266,7 +266,7 @@ validateProgramIndexedTypes :: Program -> Either String ()
 validateProgramIndexedTypes program =
   traverse_ (validateType "type alias" . typeAliasBody) (programAliases program)
     *> traverse_ validateAmbientDecl (programAmbient program)
-    *> traverse_ validateExpr (programExpr program)
+    *> traverse_ (validateExpr . markedValue) (programExpr program)
 
 -- | Build the internal canonical tensor spelling used by normalization.
 canonicalTensorType :: [Type] -> Type -> Type
@@ -335,7 +335,7 @@ validateExpr :: Expr -> Either String ()
 validateExpr = \case
   ELambda (PVar _ annotation) body -> traverse_ (validateType "term annotation") annotation *> validateExpr body
   EApp fun arg -> validateExpr fun *> validateExpr arg
-  ELet items body -> traverse_ validateLetItem items *> validateExpr body
+  ELet items body -> traverse_ (validateLetItem . markedValue) items *> validateExpr body
   EAttrSet items -> traverse_ validateAttrItem items
   ESelect base _ -> validateExpr base
   EIf cond yesExpr noExpr -> validateExpr cond *> validateExpr yesExpr *> validateExpr noExpr

@@ -90,7 +90,7 @@ validateProgramKinds aliases program = do
   pure aliasKinds
   where
     ambientDeclEntries = concatMap ambientEntriesFromDecl (programAmbient program)
-    annotationTypes = maybe [] exprAnnotations (programExpr program)
+    annotationTypes = maybe [] (exprAnnotations . markedValue) (programExpr program)
     ambientEntriesFromDecl decl = ambientEntries decl
 
 inferAll :: [TypeAlias] -> KindM AliasKindEnv
@@ -242,7 +242,7 @@ exprAnnotations = \case
   EPath _ -> []
   ELambda (PVar _ annotation) body -> maybe [] pure annotation <> exprAnnotations body
   EApp fun arg -> exprAnnotations fun <> exprAnnotations arg
-  ELet items body -> foldMap letItemAnnotations items <> exprAnnotations body
+  ELet items body -> foldMap (letItemAnnotations . markedValue) items <> exprAnnotations body
   EAttrSet items -> foldMap attrAnnotations items
   ESelect base _ -> exprAnnotations base
   EIf cond yesExpr noExpr -> foldMap exprAnnotations [cond, yesExpr, noExpr]

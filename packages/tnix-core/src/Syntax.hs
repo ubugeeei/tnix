@@ -7,14 +7,34 @@ module Syntax
   ( AmbientDecl (..),
     AmbientEntry (..),
     AttrItem (..),
+    DiagnosticDirective (..),
     Expr (..),
     LetItem (..),
+    Marked (..),
     Pattern (..),
     Program (..),
   )
 where
 
 import Type (Name, Type, TypeAlias)
+
+-- | Source comment directives that affect checker diagnostics.
+--
+-- These mirror the intent of TypeScript's line-level suppression comments but
+-- are currently scoped to executable surfaces the checker understands well:
+-- root expressions and `let` items. The parser attaches a directive when a
+-- preceding `# @tnix-...` comment targets the next line of code.
+data DiagnosticDirective
+  = TnixIgnore
+  | TnixExpected
+  deriving (Eq, Show)
+
+-- | Wrapper for syntax nodes that may carry one diagnostic directive.
+data Marked a = Marked
+  { markedDirective :: Maybe DiagnosticDirective,
+    markedValue :: a
+  }
+  deriving (Eq, Show)
 
 -- | A complete tnix file.
 --
@@ -24,7 +44,7 @@ import Type (Name, Type, TypeAlias)
 data Program = Program
   { programAliases :: [TypeAlias],
     programAmbient :: [AmbientDecl],
-    programExpr :: Maybe Expr
+    programExpr :: Maybe (Marked Expr)
   }
   deriving (Eq, Show)
 
@@ -61,7 +81,7 @@ data Expr
   | EPath FilePath
   | ELambda Pattern Expr
   | EApp Expr Expr
-  | ELet [LetItem] Expr
+  | ELet [Marked LetItem] Expr
   | EAttrSet [AttrItem]
   | ESelect Expr [Name]
   | EIf Expr Expr Expr

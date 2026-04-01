@@ -27,15 +27,17 @@ spec = describe "parseProgram" $ do
     programAmbient program
       `shouldBe` [AmbientDecl "./lib.nix" [AmbientEntry "default" (TApp (TCon "Box") tInt)]]
     programExpr program
-      `shouldBe` Just (ELet [LetBinding "box" (EApp (EVar "import") (EPath "./lib.nix"))] (ESelect (EVar "box") ["value"]))
+      `shouldBe` Just (plain (ELet [plain (LetBinding "box" (EApp (EVar "import") (EPath "./lib.nix")))] (ESelect (EVar "box") ["value"])))
 
   it "parses typed lambdas and nested selections without changing nix shape" $ do
     program <- expectRight $ parseProgram "main.tnix" "{ nested = { value = 1; }; }.nested.value"
     programExpr program
       `shouldBe` Just
-        ( ESelect
-            (EAttrSet [AttrField "nested" (EAttrSet [AttrField "value" (EInt 1)])])
-            ["nested", "value"]
+        ( plain
+            ( ESelect
+                (EAttrSet [AttrField "nested" (EAttrSet [AttrField "value" (EInt 1)])])
+                ["nested", "value"]
+            )
         )
 
   it "parses conditional types with infer binders" $ do
@@ -63,7 +65,7 @@ spec = describe "parseProgram" $ do
             []
             (TApp (TApp (TCon "Unit") (TLit (LString "ms"))) (TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 5000))) tNat))
         ]
-    programExpr program `shouldBe` Just (EFloat 1.5)
+    programExpr program `shouldBe` Just (plain (EFloat 1.5))
 
   it "parses parenthesized refinements and unions inside tensor shapes" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Batch t = Tensor [(Range 0 2 Nat) (1 | 2) 4] t;"
@@ -101,7 +103,7 @@ spec = describe "parseProgram" $ do
 
   it "parses typed lambda binders" $ do
     program <- expectRight $ parseProgram "main.tnix" "(x :: Int): x"
-    programExpr program `shouldBe` Just (ELambda (PVar "x" (Just tInt)) (EVar "x"))
+    programExpr program `shouldBe` Just (plain (ELambda (PVar "x" (Just tInt)) (EVar "x")))
 
   it "parses comments, inherit clauses, and list conditionals" $ do
     program <-
@@ -118,14 +120,16 @@ spec = describe "parseProgram" $ do
           )
     programExpr program
       `shouldBe` Just
-        ( ELet
-            [LetBinding "value" (EInt 1)]
-            ( EAttrSet
-                [ AttrInherit ["value"],
-                  AttrField
-                    "nested"
-                    (EList [EIf (EBool True) (EInt 1) (EInt 2), EPath "../lib.nix"])
-                ]
+        ( plain
+            ( ELet
+                [plain (LetBinding "value" (EInt 1))]
+                ( EAttrSet
+                    [ AttrInherit ["value"],
+                      AttrField
+                        "nested"
+                        (EList [EIf (EBool True) (EInt 1) (EInt 2), EPath "../lib.nix"])
+                    ]
+                )
             )
         )
 
@@ -136,10 +140,34 @@ spec = describe "parseProgram" $ do
   it "parses absolute path imports and nested field selections in applications" $ do
     program <- expectRight $ parseProgram "main.tnix" "(import /etc/hosts).meta.value"
     programExpr program
-      `shouldBe` Just (ESelect (EApp (EVar "import") (EPath "/etc/hosts")) ["meta", "value"])
+      `shouldBe` Just (plain (ESelect (EApp (EVar "import") (EPath "/etc/hosts")) ["meta", "value"]))
+
+  it "attaches tnix diagnostic directives to the next root expression or let item" $ do
+    program <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          ( source
+              [ "# @tnix-expected",
+                "let",
+                "  # @tnix-ignore",
+                "  value = missing;",
+                "in value"
+              ]
+          )
+    programExpr program
+      `shouldBe` Just
+        ( Marked
+            (Just TnixExpected)
+            (ELet [Marked (Just TnixIgnore) (LetBinding "value" (EVar "missing"))] (EVar "value"))
+        )
+
+  it "rejects dangling tnix directives without a following line of code" $
+    parseProgram "main.tnix" "# @tnix-ignore" `shouldSatisfy` isLeft
 
   it "rejects reserved words as identifiers" $
     parseProgram "main.tnix" "let if = 1; in if" `shouldSatisfy` isLeft
   where
+    plain = Marked Nothing
     isLeft (Left _) = True
     isLeft _ = False

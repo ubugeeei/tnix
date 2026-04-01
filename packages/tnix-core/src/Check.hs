@@ -14,6 +14,7 @@ module Check
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Monad (foldM, forM, when, zipWithM)
 import Control.Monad.State.Strict
 import Data.List (group, sort)
@@ -87,13 +88,7 @@ checkProgram ctx program =
 
     inferTop local env = case programExpr program of
       Nothing -> pure (CheckResult Nothing Map.empty)
-      Just (ELet items body) -> do
-        (env', bindings) <- inferLet local env items
-        ty <- inferExpr local env' body >>= zonk
-        pure (CheckResult (Just (closeMetas ty)) bindings)
-      Just expr -> do
-        ty <- inferExpr local env expr >>= zonk
-        pure (CheckResult (Just (closeMetas ty)) Map.empty)
+      Just markedExpr -> inferRootExpression local env markedExpr
 
 -- | Infer the type of one expression under the current local environment.
 --
@@ -201,13 +196,14 @@ inferExpr ctx env = \case
 -- in value
 --   => allocates a placeholder first, then constrains recursively
 -- @
-inferLet :: CheckContext -> TypeEnv -> [LetItem] -> InferM (TypeEnv, Map Name Scheme)
+inferLet :: CheckContext -> TypeEnv -> [Marked LetItem] -> InferM (TypeEnv, Map Name Scheme)
 inferLet ctx env items = do
-  let sigs = Map.fromList [(name, schemeFromAnnotation ty) | LetSignature name ty <- items]
-      binds = [(name, expr) | LetBinding name expr <- items]
-      bindNames = map fst binds
+  let sigs = Map.fromList [(name, schemeFromAnnotation ty) | Marked _ (LetSignature name ty) <- items]
+      sigDirectives = Map.fromList [(name, directive) | Marked (Just directive) (LetSignature name _) <- items]
+      binds = [(name, expr, directive) | Marked directive (LetBinding name expr) <- items]
+      bindNames = [name | (name, _, _) <- binds]
       missing = filter (`notElem` bindNames) (Map.keys sigs)
-      duplicateSigs = duplicateNames [name | LetSignature name _ <- items]
+      duplicateSigs = duplicateNames [name | Marked _ (LetSignature name _) <- items]
       duplicateBinds = duplicateNames bindNames
       placeholder name = do
         scheme <- maybe (Scheme [] <$> freshMeta) pure (Map.lookup name sigs)
@@ -217,11 +213,23 @@ inferLet ctx env items = do
   when (not (null missing)) (lift (Left ("missing bindings for signatures: " <> show missing)))
   placeholders <- Map.fromList <$> traverse placeholder bindNames
   let recursiveEnv = placeholders <> env
-  inferred <- forM binds $ \(name, expr) -> do
+  inferred <- forM binds $ \(name, expr, inlineDirective) -> do
     expected <- instantiate (recursiveEnv Map.! name)
-    actual <- inferExpr ctx recursiveEnv expr
-    _ <- constrain ctx actual expected
-    resolved <- zonk expected
+    let directive = inlineDirective <|> Map.lookup name sigDirectives
+    attempt <-
+      catchInfer $ do
+        actual <- inferExpr ctx recursiveEnv expr
+        _ <- constrain ctx actual expected
+        zonk expected
+    resolved <-
+      case (directive, attempt) of
+        (Nothing, Right ty) -> pure ty
+        (Nothing, Left err) -> lift (Left err)
+        (Just TnixIgnore, Right ty) -> pure ty
+        (Just TnixIgnore, Left _) -> recoverSuppressedType ctx expected
+        (Just TnixExpected, Left _) -> recoverSuppressedType ctx expected
+        (Just TnixExpected, Right _) ->
+          lift (Left ("unused @tnix-expected directive on binding " <> show name))
     pure (name, maybe (closeMetas resolved) id (Map.lookup name sigs))
   let finals = Map.fromList inferred
   pure (finals <> env, finals)
@@ -247,6 +255,36 @@ freshMeta = do
 -- up-to-date structural view.
 zonk :: Type -> InferM Type
 zonk ty = substituteMetas <$> gets substitutions <*> pure ty
+
+inferRootExpression :: CheckContext -> TypeEnv -> Marked Expr -> InferM CheckResult
+inferRootExpression ctx env (Marked directive expr) = do
+  attempt <-
+    catchInfer $
+      case expr of
+        ELet items body -> do
+          (env', bindings) <- inferLet ctx env items
+          ty <- inferExpr ctx env' body >>= zonk
+          pure (CheckResult (Just (closeMetas ty)) bindings)
+        _ -> do
+          ty <- inferExpr ctx env expr >>= zonk
+          pure (CheckResult (Just (closeMetas ty)) Map.empty)
+  case (directive, attempt) of
+    (Nothing, Right result) -> pure result
+    (Nothing, Left err) -> lift (Left err)
+    (Just TnixIgnore, Right result) -> pure result
+    (Just TnixIgnore, Left _) -> pure (CheckResult (Just (Scheme [] tDynamic)) Map.empty)
+    (Just TnixExpected, Left _) -> pure (CheckResult (Just (Scheme [] tDynamic)) Map.empty)
+    (Just TnixExpected, Right _) -> lift (Left "unused @tnix-expected directive on root expression")
+
+catchInfer :: InferM a -> InferM (Either String a)
+catchInfer action = do
+  snapshot <- get
+  case runStateT action snapshot of
+    Left err -> pure (Left err)
+    Right (value, state') -> put state' >> pure (Right value)
+
+recoverSuppressedType :: CheckContext -> Type -> InferM Type
+recoverSuppressedType ctx expected = constrain ctx tDynamic expected *> zonk expected
 
 -- | Check that an inferred type satisfies an expected type.
 --
@@ -430,10 +468,10 @@ usageCount target = go
         | otherwise -> go body
       EApp fun arg -> go fun + go arg
       ELet items body ->
-        let names = [name | LetBinding name _ <- items]
+        let names = [name | Marked _ (LetBinding name _) <- items]
          in if target `elem` names
               then 0
-              else sum (map letItemCount items) + go body
+              else sum (map (letItemCount . markedValue) items) + go body
       EAttrSet items -> sum (map attrItemCount items)
       ESelect base _ -> go base
       EIf cond yesExpr noExpr -> go cond + go yesExpr + go noExpr

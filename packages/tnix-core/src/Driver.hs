@@ -142,7 +142,7 @@ loadDeclarationFile path = do
   input <- Text.readFile path
   pure $ do
     program <- firstError ("failed to load declaration file " <> path <> ": ") (parseText path input)
-    case programExpr program of
+    case markedValue <$> programExpr program of
       Just _ -> Left ("declaration files must not contain executable expressions: " <> path)
       Nothing -> do
         _ <- validateProgramKinds (programAliases program) program
