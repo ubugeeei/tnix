@@ -67,6 +67,11 @@ spec = describe "parseProgram" $ do
         ]
     programExpr program `shouldBe` Just (plain (EFloat 1.5))
 
+  it "parses any and unknown as distinct built-in gradual types" $ do
+    program <- expectRight $ parseProgram "main.tnix" "type Loose = any; type Opaque = unknown;"
+    programAliases program
+      `shouldBe` [TypeAlias "Loose" [] tAny, TypeAlias "Opaque" [] tUnknown]
+
   it "parses parenthesized refinements and unions inside tensor shapes" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Batch t = Tensor [(Range 0 2 Nat) (1 | 2) 4] t;"
     programAliases program

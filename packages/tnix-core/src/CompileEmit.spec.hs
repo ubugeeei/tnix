@@ -228,6 +228,32 @@ spec = describe "compile and emit" $ do
         >>= expectRight
     Text.isInfixOf "default :: Unit \"ms\" (Range 0 5000 Nat);" output `shouldBe` True
 
+  it "emits any and unknown annotations distinctly" $ do
+    anyOutput <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: any;",
+              "  value = 1;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    unknownOutput <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: unknown;",
+              "  value = 1;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    Text.isInfixOf "default :: any;" anyOutput `shouldBe` True
+    Text.isInfixOf "default :: unknown;" unknownOutput `shouldBe` True
+
   it "erases numeric and unit annotations when compiling executable output" $ do
     output <-
       compileText

@@ -150,6 +150,16 @@ spec = describe "subtyping and type reduction" $ do
     isConsistent mempty tDynamic tString `shouldBe` True
     isSubtype mempty tDynamic tString `shouldBe` False
 
+  it "models any as unsound and unknown as a top type" $ do
+    isConsistent mempty tAny tString `shouldBe` True
+    isSubtype mempty tAny tString `shouldBe` True
+    isSubtype mempty tString tAny `shouldBe` True
+    isSubtype mempty tString tUnknown `shouldBe` True
+    isSubtype mempty tUnknown tString `shouldBe` False
+    isSubtype mempty tUnknown tAny `shouldBe` True
+    joinTypes mempty tAny tString `shouldBe` tAny
+    joinTypes mempty tUnknown tString `shouldBe` tUnknown
+
   it "joins exact indexed lengths into bounded or union-like shapes" $ do
     let exact = TApp (TApp (TCon "Vec") (TLit (LInt 2))) tInt
         bounded = TApp (TApp (TCon "Vec") (TApp (TApp (TApp (TCon "Range") (TLit (LInt 2))) (TLit (LInt 4))) tNat)) tInt

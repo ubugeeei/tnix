@@ -286,6 +286,58 @@ spec = describe "analysis" $ do
       )
       >>= (`expectLeftContaining` "type mismatch")
 
+  it "lets any flow through field access and application" $ do
+    fieldAnalysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: any;",
+              "  value = { nested = 1; };",
+              "in value.missing"
+            ]
+        )
+        >>= expectRight
+    callAnalysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  fn :: any;",
+              "  fn = x: x;",
+              "in fn 1"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot fieldAnalysis) `shouldBe` Just "any"
+    fmap renderScheme (analysisRoot callAnalysis) `shouldBe` Just "any"
+
+  it "accepts unknown as an annotation but rejects using it as a concrete type" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: unknown;",
+              "  value = 1;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "unknown"
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  value :: unknown;",
+            "  value = 1;",
+            "  label :: String;",
+            "  label = value;",
+            "in label"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+
   it "rejects invalid numeric validator declarations and out-of-range shape unions" $ do
     analyzeText
       "main.tnix"
