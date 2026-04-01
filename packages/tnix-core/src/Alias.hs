@@ -67,6 +67,10 @@ expandAliases env = go 0
       | depth > 32 = ty
       | otherwise =
         case ty of
+          TCon name
+            | Just alias <- Map.lookup name env,
+              null (typeAliasParams alias) ->
+                go (depth + 1) (typeAliasBody alias)
           TTypeList items -> TTypeList (map (go (depth + 1)) items)
           TFun a b -> TFun (go (depth + 1) a) (go (depth + 1) b)
           TRecord fields -> TRecord (fmap (go (depth + 1)) fields)

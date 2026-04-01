@@ -38,6 +38,11 @@ spec = describe "subtyping and type reduction" $ do
     resolveType env (TApp (TApp (TCon "Apply") (TCon "List")) tString)
       `shouldBe` tList tString
 
+  it "reduces nullary aliases without requiring synthetic arguments" $ do
+    let env = mkAliasEnv [TypeAlias "Inputs" [] (TRecord (Map.fromList [("self", tDynamic)]))]
+    resolveType env (TCon "Inputs")
+      `shouldBe` TRecord (Map.fromList [("self", tDynamic)])
+
   it "normalizes indexed containers to canonical tensor shapes" $ do
     resolveType mempty (TApp (TApp (TCon "Vec") (TLit (LInt 3))) tInt)
       `shouldBe` TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 3)])) tInt

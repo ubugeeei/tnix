@@ -41,6 +41,20 @@ spec = describe "analysis" $ do
   it "reports missing fields" $
     analyzeText "main.tnix" "{ value = 1; }.missing" >>= (`expectLeftContaining` "missing field")
 
+  it "resolves field selections through previously inferred let bindings" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  record = { value = 1; nested = { label = \"tnix\"; }; };",
+              "  value = record.nested.label;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    analysisRoot analysis `shouldBe` Just (Scheme [] (TLit (LString "tnix")))
+
   it "reports unbound names" $
     analyzeText "main.tnix" "missing" >>= (`expectLeftContaining` "unbound name")
 

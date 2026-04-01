@@ -117,7 +117,8 @@ inferExpr ctx env = \case
     foldM step baseTy fields
     where
       step ty field =
-        case lookupRecordField (checkAliases ctx) ty field of
+        zonk ty >>= \resolvedTy ->
+          case lookupRecordField (checkAliases ctx) resolvedTy field of
           Just fieldTy -> instantiate (schemeFromAnnotation fieldTy)
           Nothing -> lift (Left ("missing field " <> show field))
   EIf cond yesExpr noExpr -> do
