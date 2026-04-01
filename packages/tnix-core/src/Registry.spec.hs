@@ -99,11 +99,73 @@ spec = describe "ecosystem registry" $ do
           renderedRoot flakePartsAnalysis `shouldBe` "dynamic -> dynamic -> dynamic"
       )
 
+  it "lets projects reuse bundled community flake aliases" $ do
+    root <- findRepoRoot =<< getCurrentDirectory
+    registry <- loadRegistry root registryFiles
+    withTempTree
+      ( registry
+          <> [ ( "types.d.tnix",
+                 source
+                   [ "declare \"./devenv.nix\" { default :: DevenvFlake; };",
+                     "declare \"./treefmt-nix.nix\" { default :: TreefmtNixFlake; };",
+                     "declare \"./pre-commit-hooks.nix\" { default :: PreCommitHooksFlake; };",
+                     "declare \"./crane.nix\" { default :: CraneFlake; };",
+                     "declare \"./deploy-rs.nix\" { default :: DeployRsFlake; };",
+                     "declare \"./nixvim.nix\" { default :: NixvimFlake; };",
+                     "declare \"./sops-nix.nix\" { default :: SopsNixFlake; };",
+                     "declare \"./agenix.nix\" { default :: AgenixFlake; };",
+                     "declare \"./disko.nix\" { default :: DiskoFlake; };",
+                     "declare \"./colmena.nix\" { default :: ColmenaFlake; };"
+                   ]
+               ),
+               ("devenv-surface.tnix", "let value = import ./devenv.nix; in value.lib.mkShell"),
+               ("treefmt-surface.tnix", "let value = import ./treefmt-nix.nix; in value.lib.evalModule"),
+               ("pre-commit-surface.tnix", "let value = import ./pre-commit-hooks.nix; in value.lib.x86_64-linux.run"),
+               ("crane-surface.tnix", "let value = import ./crane.nix; in value.lib.x86_64-linux.buildPackage"),
+               ("deploy-surface.tnix", "let value = import ./deploy-rs.nix; in value.lib.x86_64-linux.deployChecks"),
+               ("nixvim-surface.tnix", "let value = import ./nixvim.nix; in value.homeManagerModules.default"),
+               ("sops-surface.tnix", "let value = import ./sops-nix.nix; in value.nixosModules.default"),
+               ("agenix-surface.tnix", "let value = import ./agenix.nix; in value.packages.x86_64-linux.default"),
+               ("disko-surface.tnix", "let value = import ./disko.nix; in value.nixosModules.disko"),
+               ("colmena-surface.tnix", "let value = import ./colmena.nix; in value.lib.makeHive")
+             ]
+      )
+      ( \tmp -> do
+          devenvAnalysis <- analyzeFile (tmp </> "devenv-surface.tnix") >>= expectRight
+          treefmtAnalysis <- analyzeFile (tmp </> "treefmt-surface.tnix") >>= expectRight
+          preCommitAnalysis <- analyzeFile (tmp </> "pre-commit-surface.tnix") >>= expectRight
+          craneAnalysis <- analyzeFile (tmp </> "crane-surface.tnix") >>= expectRight
+          deployAnalysis <- analyzeFile (tmp </> "deploy-surface.tnix") >>= expectRight
+          nixvimAnalysis <- analyzeFile (tmp </> "nixvim-surface.tnix") >>= expectRight
+          sopsAnalysis <- analyzeFile (tmp </> "sops-surface.tnix") >>= expectRight
+          agenixAnalysis <- analyzeFile (tmp </> "agenix-surface.tnix") >>= expectRight
+          diskoAnalysis <- analyzeFile (tmp </> "disko-surface.tnix") >>= expectRight
+          colmenaAnalysis <- analyzeFile (tmp </> "colmena-surface.tnix") >>= expectRight
+          let renderedTreefmt = renderedRoot treefmtAnalysis
+              renderedPreCommit = renderedRoot preCommitAnalysis
+              renderedCrane = renderedRoot craneAnalysis
+              renderedAgenix = renderedRoot agenixAnalysis
+          renderedRoot devenvAnalysis `shouldBe` "dynamic -> dynamic"
+          Text.isInfixOf "-> dynamic -> {" renderedTreefmt `shouldBe` True
+          Text.isInfixOf "check ::" renderedTreefmt `shouldBe` True
+          Text.isInfixOf "shellHook :: String" renderedPreCommit `shouldBe` True
+          Text.isInfixOf "enabledPackages :: List dynamic" renderedPreCommit `shouldBe` True
+          Text.isInfixOf "dynamic ->" renderedCrane `shouldBe` True
+          Text.isInfixOf "derivationType :: \"derivation\"" renderedCrane `shouldBe` True
+          renderedRoot deployAnalysis `shouldBe` "dynamic -> dynamic"
+          renderedRoot nixvimAnalysis `shouldBe` "dynamic"
+          renderedRoot sopsAnalysis `shouldBe` "dynamic"
+          Text.isInfixOf "derivationType :: \"derivation\"" renderedAgenix `shouldBe` True
+          renderedRoot diskoAnalysis `shouldBe` "dynamic"
+          renderedRoot colmenaAnalysis `shouldBe` "dynamic -> dynamic"
+      )
+
 registryFiles :: [FilePath]
 registryFiles =
   [ "registry/nixpkgs-lib.d.tnix",
     "registry/nixpkgs-pkgs.d.tnix",
-    "registry/flake-ecosystem.d.tnix"
+    "registry/flake-ecosystem.d.tnix",
+    "registry/community-flakes.d.tnix"
   ]
 
 loadRegistry :: FilePath -> [FilePath] -> IO [(FilePath, Text)]
