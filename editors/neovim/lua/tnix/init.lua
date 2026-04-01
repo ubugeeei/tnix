@@ -1,4 +1,5 @@
 local M = {}
+local config = require("tnix.config")
 
 function M.setup(opts)
   opts = opts or {}
@@ -11,11 +12,7 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("FileType", {
     pattern = "tnix",
     callback = function(ev)
-      vim.lsp.start({
-        name = "tnix-lsp",
-        cmd = opts.cmd or { "tnix-lsp" },
-        root_dir = vim.fs.root(ev.buf, { "flake.nix", "cabal.project", ".git" }) or vim.loop.cwd(),
-      })
+      vim.lsp.start(config.server_config(ev.buf, opts))
     end,
   })
 end
