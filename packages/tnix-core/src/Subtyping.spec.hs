@@ -16,6 +16,11 @@ spec = describe "subtyping and type reduction" $ do
   it "treats literal values as subtypes of primitive constructors" $ do
     isSubtype mempty (TLit (LString "tnix")) tString `shouldBe` True
     isSubtype mempty (TLit (LInt 1)) tInt `shouldBe` True
+    isSubtype mempty (TLit (LInt 1)) tNat `shouldBe` True
+    isSubtype mempty (TLit (LInt (-1))) tNat `shouldBe` False
+    isSubtype mempty (TLit (LFloat 1.5)) tFloat `shouldBe` True
+    isSubtype mempty (TLit (LFloat 1.5)) tNat `shouldBe` False
+    isSubtype mempty (TLit (LFloat 1.5)) tNumber `shouldBe` True
     isSubtype mempty (TLit (LBool False)) tBool `shouldBe` True
 
   it "supports structural width subtyping for records" $
@@ -66,6 +71,7 @@ spec = describe "subtyping and type reduction" $ do
 
   it "joins compatible types and falls back to unions" $ do
     joinTypes mempty (TLit (LString "x")) tString `shouldBe` tString
+    joinTypes mempty tInt tFloat `shouldBe` tNumber
     joinTypes mempty tInt tString `shouldBe` TUnion [tInt, tString]
 
   it "treats tensors as nested lists for subtyping and joins" $ do
@@ -74,7 +80,44 @@ spec = describe "subtyping and type reduction" $ do
         matrix22 = TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 2))) tInt
     isSubtype mempty vec2 (tList tInt) `shouldBe` True
     isSubtype mempty matrix22 (tList vec2) `shouldBe` True
-    joinTypes mempty vec2 vec3 `shouldBe` tList tInt
+    joinTypes mempty vec2 vec3 `shouldBe` TApp (TApp (TCon "Vec") (TUnion [TLit (LInt 2), TLit (LInt 3)])) tInt
+
+  it "joins matrix shapes dimension-wise when ranks agree" $ do
+    let matrix22 = TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 2))) tInt
+        matrix32 = TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 3))) (TLit (LInt 2))) tInt
+    joinTypes mempty matrix22 matrix32
+      `shouldBe` TApp (TApp (TApp (TCon "Matrix") (TUnion [TLit (LInt 2), TLit (LInt 3)])) (TLit (LInt 2))) tInt
+
+  it "treats statically empty tensors as compatible with any element type" $ do
+    let emptyVec = TApp (TApp (TCon "Vec") (TLit (LInt 0))) tDynamic
+        bounded = TApp (TApp (TCon "Vec") (TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 2))) tNat)) tInt
+    isSubtype mempty emptyVec bounded `shouldBe` True
+
+  it "checks numeric refinements and unit wrappers structurally" $ do
+    let smallNat = TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 10))) tNat
+        widerNat = TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 20))) tNat
+        smallFloat = TApp (TApp (TApp (TCon "Range") (TLit (LFloat 0.0))) (TLit (LFloat 1.0))) tFloat
+        widerNumber = TApp (TApp (TApp (TCon "Range") (TLit (LFloat 0.0))) (TLit (LFloat 10.0))) tNumber
+        timeout = TApp (TApp (TCon "Unit") (TLit (LString "ms"))) smallNat
+        timeoutSeconds = TApp (TApp (TCon "Unit") (TLit (LString "s"))) smallNat
+        widerTimeout = TApp (TApp (TCon "Unit") (TLit (LString "ms"))) tNumber
+    isSubtype mempty (TLit (LInt 0)) smallNat `shouldBe` True
+    isSubtype mempty (TLit (LInt 3)) smallNat `shouldBe` True
+    isSubtype mempty (TLit (LInt 10)) smallNat `shouldBe` True
+    isSubtype mempty (TLit (LInt 11)) smallNat `shouldBe` False
+    isSubtype mempty smallNat tNat `shouldBe` True
+    isSubtype mempty smallNat widerNat `shouldBe` True
+    isSubtype mempty (TLit (LFloat 0.5)) smallFloat `shouldBe` True
+    isSubtype mempty (TLit (LFloat 1.0)) smallFloat `shouldBe` True
+    isSubtype mempty (TLit (LFloat 1.5)) smallFloat `shouldBe` False
+    isSubtype mempty smallFloat widerNumber `shouldBe` True
+    isSubtype mempty (TLit (LInt 3)) timeout `shouldBe` True
+    isSubtype mempty timeout widerTimeout `shouldBe` True
+    isSubtype mempty timeout timeoutSeconds `shouldBe` False
+    joinTypes mempty timeout (TApp (TApp (TCon "Unit") (TLit (LString "ms"))) widerNat)
+      `shouldBe` TApp (TApp (TCon "Unit") (TLit (LString "ms"))) widerNat
+    joinTypes mempty timeout timeoutSeconds
+      `shouldBe` TUnion [timeout, timeoutSeconds]
 
   it "treats tuples as fixed heterogeneous lists" $ do
     let pair = TApp (TCon "Tuple") (TTypeList [tInt, tString])
@@ -93,3 +136,8 @@ spec = describe "subtyping and type reduction" $ do
   it "treats dynamic as consistent but not as a subtype of concrete types" $ do
     isConsistent mempty tDynamic tString `shouldBe` True
     isSubtype mempty tDynamic tString `shouldBe` False
+
+  it "joins exact indexed lengths into bounded or union-like shapes" $ do
+    let exact = TApp (TApp (TCon "Vec") (TLit (LInt 2))) tInt
+        bounded = TApp (TApp (TCon "Vec") (TApp (TApp (TApp (TCon "Range") (TLit (LInt 2))) (TLit (LInt 4))) tNat)) tInt
+    joinTypes mempty exact bounded `shouldBe` bounded
