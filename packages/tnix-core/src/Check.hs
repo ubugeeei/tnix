@@ -109,6 +109,9 @@ checkProgram ctx program =
 --
 -- inferExpr [] (import ./unknown.nix)
 --   => dynamic
+--
+-- inferExpr [] ({ value = 1; } as { value :: Int; })
+--   => { value :: Int; }
 -- @
 inferExpr :: CheckContext -> TypeEnv -> Expr -> InferM Type
 inferExpr ctx env = \case
@@ -177,6 +180,9 @@ inferExpr ctx env = \case
   EList members ->
     traverse (inferExpr ctx env) members
       >>= pure . inferListType (joinTypes (checkAliases ctx))
+  ECast expr assertedTy -> do
+    actualTy <- inferExpr ctx env expr
+    checkCast ctx actualTy assertedTy
 
 -- | Infer a mutually recursive `let` group.
 --
@@ -409,6 +415,40 @@ bindMeta n ty = do
   modify' (\st -> st {substitutions = Map.insert n resolved (substitutions st)})
   pure resolved
 
+-- | Validate an explicit `expr as Type` assertion.
+--
+-- Casts deliberately live between plain assignment and fully-unsound escape
+-- hatches. They are accepted when the two sides already overlap structurally,
+-- when a gradual boundary such as `any`, `unknown`, or `dynamic` connects
+-- them, or when the cast still contains unresolved inference metas that can be
+-- solved by unification.
+--
+-- Representative examples:
+--
+-- @
+-- { value = 1; } as { value :: Int; }
+--   => accepted
+--
+-- import ./opaque.nix as { value :: String; }
+--   => accepted when the import is `dynamic`
+--
+-- 1 as String
+--   => rejected
+-- @
+checkCast :: CheckContext -> Type -> Type -> InferM Type
+checkCast ctx actual expected = do
+  actual' <- normalizeIndexedType <$> zonk actual
+  expected' <- normalizeIndexedType <$> zonk expected
+  let aliases = checkAliases ctx
+  if hasUnresolvedMetas actual' expected'
+    then unify ctx actual' expected' *> pure expected
+    else
+      if isSubtype aliases actual' expected'
+        || isSubtype aliases expected' actual'
+        || isConsistent aliases actual' expected'
+        then pure expected
+        else lift (Left ("invalid cast: " <> show actual' <> " as " <> show expected'))
+
 -- | Resolve an import path relative to the current source file.
 --
 -- Absolute paths are normalized but otherwise preserved. Relative paths are
@@ -483,6 +523,7 @@ usageCount target = go
       ESelect base _ -> go base
       EIf cond yesExpr noExpr -> go cond + go yesExpr + go noExpr
       EList items -> sum (map go items)
+      ECast expr _ -> go expr
     letItemCount = \case
       LetSignature _ _ -> 0
       LetBinding _ expr -> go expr

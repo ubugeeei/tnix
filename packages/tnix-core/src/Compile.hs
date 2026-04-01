@@ -29,6 +29,7 @@ eraseExpr expr =
     ESelect base fields -> ESelect (eraseExpr base) fields
     EIf cond yesExpr noExpr -> EIf (eraseExpr cond) (eraseExpr yesExpr) (eraseExpr noExpr)
     EList members -> EList (map eraseExpr members)
+    ECast inner _ -> eraseExpr inner
     other -> other
 
 erasePattern :: Pattern -> Pattern

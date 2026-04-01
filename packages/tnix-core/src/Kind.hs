@@ -249,6 +249,7 @@ exprAnnotations = \case
   ESelect base _ -> exprAnnotations base
   EIf cond yesExpr noExpr -> foldMap exprAnnotations [cond, yesExpr, noExpr]
   EList members -> foldMap exprAnnotations members
+  ECast expr ty -> exprAnnotations expr <> [ty]
 
 letItemAnnotations :: LetItem -> [Type]
 letItemAnnotations = \case

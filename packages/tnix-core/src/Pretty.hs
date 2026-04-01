@@ -84,6 +84,7 @@ prettyExpr p = \case
   ESelect base names -> parenIf (p > 2) (prettyExpr 2 base <> foldMap (("." <>) . pretty) names)
   EIf a b c -> vsep ["if" <+> prettyExpr 0 a, "then" <+> prettyExpr 0 b, "else" <+> prettyExpr 0 c]
   EList items -> "[" <+> hsep (map (prettyExpr 0) items) <+> "]"
+  ECast expr ty -> parenIf (p > 0) (prettyExpr 1 expr <+> "as" <+> prettyType 0 ty)
 
 prettyLet :: LetItem -> Doc ann
 prettyLet = \case

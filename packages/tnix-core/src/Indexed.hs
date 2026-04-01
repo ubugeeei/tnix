@@ -340,6 +340,7 @@ validateExpr = \case
   ESelect base _ -> validateExpr base
   EIf cond yesExpr noExpr -> validateExpr cond *> validateExpr yesExpr *> validateExpr noExpr
   EList items -> traverse_ validateExpr items
+  ECast expr ty -> validateExpr expr *> validateType "term annotation" ty
   _ -> pure ()
 
 -- | Validate one `let` item's annotation payload, if present.
