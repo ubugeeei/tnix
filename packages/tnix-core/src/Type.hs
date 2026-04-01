@@ -11,6 +11,7 @@
 module Type
   ( Kind (..),
     LiteralType (..),
+    Multiplicity (..),
     Name,
     Scheme (..),
     Type (..),
@@ -68,6 +69,15 @@ data Kind
   | KMeta Int
   deriving (Eq, Ord, Show)
 
+-- | Argument multiplicity for function arrows.
+--
+-- `One` models linear functions that must consume their argument exactly once,
+-- while `Many` is the ordinary unrestricted arrow used by plain Nix code.
+data Multiplicity
+  = One
+  | Many
+  deriving (Eq, Ord, Show)
+
 -- | The tnix type language.
 --
 -- A few design choices are worth calling out:
@@ -86,7 +96,7 @@ data Type
   | TLit LiteralType
   | TTypeList [Type]
   | TDynamic
-  | TFun Type Type
+  | TFun Multiplicity Type Type
   | TRecord (Map Name Type)
   | TUnion [Type]
   | TApp Type Type
@@ -145,7 +155,7 @@ eraseForall :: Type -> Type
 eraseForall = \case
   TForall _ body -> eraseForall body
   TTypeList items -> TTypeList (eraseForall <$> items)
-  TFun a b -> TFun (eraseForall a) (eraseForall b)
+  TFun mult a b -> TFun mult (eraseForall a) (eraseForall b)
   TRecord fields -> TRecord (fmap eraseForall fields)
   TUnion members -> TUnion (eraseForall <$> members)
   TApp f x -> TApp (eraseForall f) (eraseForall x)
@@ -156,7 +166,7 @@ freeTypeVars :: Type -> Set Name
 freeTypeVars = \case
   TVar name -> Set.singleton name
   TTypeList items -> foldMap freeTypeVars items
-  TFun a b -> freeTypeVars a <> freeTypeVars b
+  TFun _ a b -> freeTypeVars a <> freeTypeVars b
   TRecord fields -> foldMap freeTypeVars fields
   TUnion members -> foldMap freeTypeVars members
   TApp f x -> freeTypeVars f <> freeTypeVars x
@@ -172,7 +182,7 @@ freeMetas :: Type -> Set Int
 freeMetas = \case
   TMeta n -> Set.singleton n
   TTypeList items -> foldMap freeMetas items
-  TFun a b -> freeMetas a <> freeMetas b
+  TFun _ a b -> freeMetas a <> freeMetas b
   TRecord fields -> foldMap freeMetas fields
   TUnion members -> foldMap freeMetas members
   TApp f x -> freeMetas f <> freeMetas x
@@ -195,7 +205,7 @@ substituteTypeVars env = go
     go = \case
       TVar name -> Map.findWithDefault (TVar name) name env
       TTypeList items -> TTypeList (go <$> items)
-      TFun a b -> TFun (go a) (go b)
+      TFun mult a b -> TFun mult (go a) (go b)
       TRecord fields -> TRecord (fmap go fields)
       TUnion members -> TUnion (go <$> members)
       TApp f x -> TApp (go f) (go x)
@@ -213,7 +223,7 @@ substituteMetas env = go
     go = \case
       TMeta n -> maybe (TMeta n) go (Map.lookup n env)
       TTypeList items -> TTypeList (go <$> items)
-      TFun a b -> TFun (go a) (go b)
+      TFun mult a b -> TFun mult (go a) (go b)
       TRecord fields -> TRecord (fmap go fields)
       TUnion members -> TUnion (go <$> members)
       TApp f x -> TApp (go f) (go x)

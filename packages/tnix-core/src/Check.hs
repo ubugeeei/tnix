@@ -62,7 +62,7 @@ checkProgram :: CheckContext -> Program -> Either String CheckResult
 checkProgram ctx program =
   evalStateT (inferTop ctx builtins) (InferState 0 Map.empty)
   where
-    builtins = Map.fromList [("builtins", Scheme [] tDynamic), ("import", Scheme [] (TFun tPath tDynamic))]
+    builtins = Map.fromList [("builtins", Scheme [] tDynamic), ("import", Scheme [] (TFun Many tPath tDynamic))]
 
     inferTop local env = case programExpr program of
       Nothing -> pure (CheckResult Nothing Map.empty)
@@ -85,7 +85,7 @@ inferExpr ctx env = \case
   ELambda (PVar name ann) body -> do
     argTy <- maybe freshMeta pure ann
     bodyTy <- inferExpr ctx (Map.insert name (Scheme [] argTy) env) body
-    pure (TFun argTy bodyTy)
+    pure (TFun (inferLambdaMultiplicity name body) argTy bodyTy)
   EApp (EVar "import") (EPath raw) ->
     maybe (pure tDynamic) instantiate (Map.lookup (resolvePath (checkFile ctx) raw) (checkAmbient ctx))
   EApp fun arg -> do
@@ -94,9 +94,12 @@ inferExpr ctx env = \case
     if resolveType (checkAliases ctx) funTy == tDynamic
       then pure tDynamic
       else do
-        outTy <- freshMeta
-        _ <- unify ctx funTy (TFun argTy outTy)
-        zonk outTy
+        case resolveType (checkAliases ctx) funTy of
+          TFun _ domTy outTy -> constrain ctx argTy domTy *> zonk outTy
+          _ -> do
+            outTy <- freshMeta
+            _ <- unify ctx funTy (TFun Many argTy outTy)
+            zonk outTy
   ELet items body -> do
     (env', _) <- inferLet ctx env items
     inferExpr ctx env' body
@@ -122,7 +125,8 @@ inferExpr ctx env = \case
           Just fieldTy -> instantiate (schemeFromAnnotation fieldTy)
           Nothing -> lift (Left ("missing field " <> show field))
   EIf cond yesExpr noExpr -> do
-    _ <- inferExpr ctx env cond >>= unify ctx tBool
+    condTy <- inferExpr ctx env cond
+    _ <- constrain ctx condTy tBool
     yesTy <- inferExpr ctx env yesExpr
     noTy <- inferExpr ctx env noExpr
     pure (joinTypes (checkAliases ctx) yesTy noTy)
@@ -149,7 +153,7 @@ inferLet ctx env items = do
   inferred <- forM binds $ \(name, expr) -> do
     expected <- instantiate (recursiveEnv Map.! name)
     actual <- inferExpr ctx recursiveEnv expr
-    _ <- unify ctx actual expected
+    _ <- constrain ctx actual expected
     resolved <- zonk expected
     pure (name, maybe (closeMetas resolved) id (Map.lookup name sigs))
   let finals = Map.fromList inferred
@@ -169,6 +173,25 @@ freshMeta = do
 zonk :: Type -> InferM Type
 zonk ty = substituteMetas <$> gets substitutions <*> pure ty
 
+constrain :: CheckContext -> Type -> Type -> InferM Type
+constrain ctx actual expected = do
+  actual' <- normalizeIndexedType <$> zonk actual
+  expected' <- normalizeIndexedType <$> zonk expected
+  case (actual', expected') of
+    (TMeta n, TMeta m) | n == m -> pure actual'
+    (TMeta n, ty) -> bindMeta n ty
+    (ty, TMeta n) -> bindMeta n ty
+    (TTypeList xs, TTypeList ys)
+      | length xs == length ys ->
+          TTypeList <$> zipWithM (constrain ctx) xs ys
+    (TFun actualMult actualArg actualResult, TFun expectedMult expectedArg expectedResult)
+      | multiplicitySubtype actualMult expectedMult ->
+          TFun expectedMult <$> constrain ctx expectedArg actualArg <*> constrain ctx actualResult expectedResult
+    _ | actual' == expected' -> pure expected'
+    _ | isSubtype (checkAliases ctx) actual' expected' -> pure expected'
+    _ | isConsistent (checkAliases ctx) actual' expected' -> pure expected'
+    _ -> unify ctx actual' expected'
+
 unify :: CheckContext -> Type -> Type -> InferM Type
 unify ctx left right = do
   left' <- normalizeIndexedType <$> zonk left
@@ -180,7 +203,9 @@ unify ctx left right = do
     (TTypeList xs, TTypeList ys)
       | length xs == length ys ->
           TTypeList <$> zipWithM (unify ctx) xs ys
-    (TFun a b, TFun c d) -> TFun <$> unify ctx a c <*> unify ctx b d
+    (TFun leftMult a b, TFun rightMult c d)
+      | leftMult == rightMult ->
+          TFun leftMult <$> unify ctx a c <*> unify ctx b d
     (TRecord a, TRecord b) -> unifyRecord a b
     (TApp f x, TApp g y) -> TApp <$> unify ctx f g <*> unify ctx x y
     _ | left' == right' -> pure left'
@@ -231,3 +256,47 @@ duplicateNames = foldr step [] . group . sort
       case xs of
         first : _ | length xs > 1 -> first : acc
         _ -> acc
+
+inferLambdaMultiplicity :: Name -> Expr -> Multiplicity
+inferLambdaMultiplicity name body
+  | usageCount name body == 1 = One
+  | otherwise = Many
+
+usageCount :: Name -> Expr -> Int
+usageCount target = go
+  where
+    go = \case
+      EVar name
+        | name == target -> 1
+        | otherwise -> 0
+      EString _ -> 0
+      EInt _ -> 0
+      EBool _ -> 0
+      ENull -> 0
+      EPath _ -> 0
+      ELambda (PVar name _) body
+        | name == target -> 0
+        | otherwise -> go body
+      EApp fun arg -> go fun + go arg
+      ELet items body ->
+        let names = [name | LetBinding name _ <- items]
+         in if target `elem` names
+              then 0
+              else sum (map letItemCount items) + go body
+      EAttrSet items -> sum (map attrItemCount items)
+      ESelect base _ -> go base
+      EIf cond yesExpr noExpr -> go cond + go yesExpr + go noExpr
+      EList items -> sum (map go items)
+    letItemCount = \case
+      LetSignature _ _ -> 0
+      LetBinding _ expr -> go expr
+    attrItemCount = \case
+      AttrField _ expr -> go expr
+      AttrInherit names -> length (filter (== target) names)
+
+multiplicitySubtype :: Multiplicity -> Multiplicity -> Bool
+multiplicitySubtype actual expected =
+  actual == expected
+    || case (actual, expected) of
+      (One, Many) -> True
+      _ -> False

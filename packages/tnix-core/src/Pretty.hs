@@ -116,7 +116,12 @@ prettyType p ty =
             TLit (LBool False) -> "false"
             TTypeList items -> "[" <+> hsep (prettyType 0 <$> items) <+> "]"
             TDynamic -> "dynamic"
-            TFun a b -> parenIf (p > 0) (prettyType 1 a <+> "->" <+> prettyType 0 b)
+            TFun mult a b ->
+              let arrow =
+                    case mult of
+                      One -> "%1 ->"
+                      Many -> "->"
+               in parenIf (p > 0) (prettyType 1 a <+> arrow <+> prettyType 0 b)
             TRecord fields -> vsep ["{", indent 2 (vsep [pretty k <+> "::" <+> prettyType 0 v <> ";" | (k, v) <- Map.toList fields]), "}"]
             TUnion members -> parenIf (p > 1) (hsep (punctuate " |" (map (prettyType 2) members)))
             TApp f x -> parenIf (p > 2) (prettyType 2 f <+> prettyType 3 x)

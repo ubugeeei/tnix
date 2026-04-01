@@ -127,7 +127,7 @@ inferKind env local = \case
   TLit _ -> pure KType
   TTypeList members -> traverse_ (inferTypeLeaf env local) members >> pure KType
   TDynamic -> pure KType
-  TFun left right -> inferTypeLeaf env local left >> inferTypeLeaf env local right >> pure KType
+  TFun _ left right -> inferTypeLeaf env local left >> inferTypeLeaf env local right >> pure KType
   TRecord fields -> traverse_ (inferTypeLeaf env local) fields >> pure KType
   TUnion members -> traverse_ (inferTypeLeaf env local) members >> pure KType
   TApp fun arg -> do

@@ -41,7 +41,19 @@ conditionalParser = do
 
 -- | Parse right-associative function arrows.
 functionParser :: Parser Type
-functionParser = foldr1 TFun <$> sepBy1 unionParser (symbol "->")
+functionParser = do
+  lhs <- unionParser
+  option lhs $ do
+    mult <- arrowMultiplicityParser
+    rhs <- functionParser
+    pure (TFun mult lhs rhs)
+
+arrowMultiplicityParser :: Parser Multiplicity
+arrowMultiplicityParser =
+  choice
+    [ One <$ try (symbol "%1" *> symbol "->"),
+      Many <$ symbol "->"
+    ]
 
 -- | Parse normalized unions.
 unionParser :: Parser Type

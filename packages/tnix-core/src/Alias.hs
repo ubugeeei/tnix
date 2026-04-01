@@ -72,7 +72,7 @@ expandAliases env = go 0
               null (typeAliasParams alias) ->
                 go (depth + 1) (typeAliasBody alias)
           TTypeList items -> TTypeList (map (go (depth + 1)) items)
-          TFun a b -> TFun (go (depth + 1) a) (go (depth + 1) b)
+          TFun mult a b -> TFun mult (go (depth + 1) a) (go (depth + 1) b)
           TRecord fields -> TRecord (fmap (go (depth + 1)) fields)
           TUnion members -> flattenUnion (TUnion (map (go (depth + 1)) members))
           TApp f x -> reduce depth (go (depth + 1) f) (go (depth + 1) x)
@@ -104,7 +104,9 @@ matchPattern actual patternTy = go Map.empty actual patternTy
         Nothing -> Just (Map.insert name value env)
         Just prev | prev == value -> Just env
         _ -> Nothing
-    go env (TFun a b) (TFun c d) = go env a c >>= \env' -> go env' b d
+    go env (TFun actualMult a b) (TFun patternMult c d)
+      | actualMult == patternMult = go env a c >>= \env' -> go env' b d
+      | otherwise = Nothing
     go env (TRecord a) (TRecord b) = foldl step (Just env) (Map.toList b)
       where
         step acc (name, ty) = do

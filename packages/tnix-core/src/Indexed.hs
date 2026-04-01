@@ -41,7 +41,7 @@ inferListType joinElem members =
 normalizeIndexedType :: Type -> Type
 normalizeIndexedType = \case
   TTypeList items -> TTypeList (normalizeIndexedType <$> items)
-  TFun left right -> TFun (normalizeIndexedType left) (normalizeIndexedType right)
+  TFun mult left right -> TFun mult (normalizeIndexedType left) (normalizeIndexedType right)
   TRecord fields -> TRecord (fmap normalizeIndexedType fields)
   TUnion members -> TUnion (normalizeIndexedType <$> members)
   TApp fun arg ->
@@ -153,7 +153,7 @@ validateType :: Text -> Type -> Either String ()
 validateType label ty =
   case ty of
     TTypeList dims -> traverse_ (validateNatType label "tensor shape") dims
-    TFun left right -> validateType label left *> validateType label right
+    TFun _ left right -> validateType label left *> validateType label right
     TRecord fields -> traverse_ (validateType label) fields
     TUnion members -> traverse_ (validateType label) members
     TApp fun arg ->
@@ -200,7 +200,7 @@ isObviouslyInvalidIndex = \case
   TLit (LString _) -> True
   TLit (LBool _) -> True
   TTypeList _ -> True
-  TFun _ _ -> True
+  TFun _ _ _ -> True
   TRecord _ -> True
   TUnion _ -> True
   TForall _ _ -> True

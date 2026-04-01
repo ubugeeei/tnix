@@ -34,7 +34,7 @@ resolveType env = go 0 . normalizeIndexedType . expandAliases env . eraseForall
       | otherwise =
           case normalizeIndexedType (expandAliases env ty) of
             TTypeList items -> TTypeList (map (go (depth + 1)) items)
-            TFun a b -> TFun (go (depth + 1) a) (go (depth + 1) b)
+            TFun mult a b -> TFun mult (go (depth + 1) a) (go (depth + 1) b)
             TRecord fields -> TRecord (fmap (go (depth + 1)) fields)
             TUnion members -> flattenUnion (TUnion (map (go (depth + 1)) members))
             TApp f x -> TApp (go (depth + 1) f) (go (depth + 1) x)
@@ -142,11 +142,19 @@ isSubtype env left right = go (resolveType env left) (resolveType env right)
           leftShape == rightShape && go leftElem rightElem
       | Just leftList <- tensorListView a =
           go leftList b
-    go (TFun a b) (TFun c d) = go c a && go b d
+    go (TFun leftMult a b) (TFun rightMult c d) =
+      multiplicitySubtype leftMult rightMult && go c a && go b d
     go (TRecord fields) (TRecord expected) =
       all (\(name, ty) -> maybe False (`go` ty) (Map.lookup name fields)) (Map.toList expected)
     go (TApp f x) (TApp g y) = go f g && go x y
     go _ _ = False
+
+multiplicitySubtype :: Multiplicity -> Multiplicity -> Bool
+multiplicitySubtype left right =
+  left == right
+    || case (left, right) of
+      (One, Many) -> True
+      _ -> False
 
 surfaceTensor :: [Type] -> Type -> Type
 surfaceTensor dims elemTy =
