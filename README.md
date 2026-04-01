@@ -73,18 +73,25 @@ After compilation, type information is erased and only ordinary Nix code remains
 - TypeScript-style checker directives via `# @tnix-ignore` and `# @tnix-expected`
 - project bootstrapping via `tnix init`, `tnix scaffold`, and `tnix.config.tnix`
 - shipped declaration files for `builtins`, `flake.nix`, and `tnix.config.tnix`
-- curated ecosystem declaration packs under `registry/` for `nixpkgs`, flake utilities, and popular community flakes
+- bundled declaration packs under `registry/` for workspace files and popular Nix ecosystem surfaces
 
 ## Bundled Registry Packs
 
 The repository includes reusable `.d.tnix` packs under `registry/` so projects
-can vendor common Nix ecosystem types instead of rewriting ambient declarations
-from scratch.
+can vendor common declarations instead of rewriting ambient files from scratch.
 
-- `registry/nixpkgs-lib.d.tnix`
-- `registry/nixpkgs-pkgs.d.tnix`
-- `registry/flake-ecosystem.d.tnix`
-- `registry/community-flakes.d.tnix`
+Workspace-oriented packs live under `registry/workspace/`:
+
+- `registry/workspace/builtins.d.tnix`
+- `registry/workspace/flake.d.tnix`
+- `registry/workspace/tnix.config.d.tnix`
+
+Ecosystem alias packs live under `registry/ecosystem/`:
+
+- `registry/ecosystem/nixpkgs-lib.d.tnix`
+- `registry/ecosystem/nixpkgs-pkgs.d.tnix`
+- `registry/ecosystem/flake-ecosystem.d.tnix`
+- `registry/ecosystem/community-flakes.d.tnix`
 
 Typical usage is to copy the pack you want into your declaration directory and
 reuse its aliases from local `declare` blocks:
@@ -95,12 +102,8 @@ declare "./devenv.nix" { default :: DevenvFlake; };
 declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
 ```
 
-The repository root also ships ready-to-copy declarations for common local
-project files:
-
-- `builtins.d.tnix`
-- `flake.d.tnix`
-- `tnix.config.d.tnix`
+The workspace packs assume they live under `registry/workspace/` so their
+relative `declare` targets resolve back to the project root.
 
 See [CHANGELOG.md](./CHANGELOG.md) for the release history.
 

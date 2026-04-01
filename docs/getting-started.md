@@ -120,10 +120,15 @@ This is the main bridge for incremental adoption:
 
 ## Bundled Ecosystem Declarations
 
-The repository ships curated declaration packs under `registry/` for common Nix
-ecosystem surfaces. They are meant to be copied or vendored into your
-project-level declaration directory when you want a DefinitelyTyped-style
-starting point instead of handwriting every ambient declaration.
+The repository ships curated declaration packs under `registry/` for both local
+workspace files and common Nix ecosystem surfaces. They are meant to be copied
+or vendored into your project when you want a DefinitelyTyped-style starting
+point instead of handwriting every ambient declaration.
+
+Directory layout:
+
+- `registry/workspace/` for `builtins`, `flake.nix`, and `tnix.config.tnix`
+- `registry/ecosystem/` for reusable alias packs such as `nixpkgs` and popular flakes
 
 Available packs currently cover:
 

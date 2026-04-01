@@ -309,10 +309,12 @@ declare "./legacy/default.nix" {
 ### Bundled Registry Packs
 
 The repository also ships curated `.d.tnix` packs under `registry/`. These
-packs are alias-only and are meant to be reused from local `declare` blocks.
+packs are split into two groups:
 
-The repository root additionally ships `builtins.d.tnix`, `flake.d.tnix`, and
-`tnix.config.d.tnix` as ready-to-copy declarations for common local files.
+- `registry/workspace/` for root-adjacent files such as `builtins`,
+  `flake.nix`, and `tnix.config.tnix`
+- `registry/ecosystem/` for alias-oriented ecosystem packs reused from local
+  `declare` blocks
 
 Current packs include:
 
