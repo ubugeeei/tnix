@@ -7,6 +7,7 @@
 - `tnix` CLI binary
 - `tnix-lsp` language server binary
 - SHA-256 checksum files for each archive
+- Nix flake packages and apps exposed as `#tnix` and `#tnix-lsp`
 
 Artifacts are built for:
 

@@ -14,6 +14,18 @@
         };
 
         haskellPackages = pkgs.haskellPackages;
+        tnixHaskellPackages =
+          haskellPackages.extend
+            (
+              hfinal: _:
+                {
+                  "tnix-core" = hfinal.callCabal2nix "tnix-core" ./packages/tnix-core { };
+                  "tnix-cli" = hfinal.callCabal2nix "tnix-cli" ./packages/tnix-cli { };
+                  "tnix-lsp" = hfinal.callCabal2nix "tnix-lsp" ./packages/tnix-lsp { };
+                }
+            );
+        tnixCli = tnixHaskellPackages."tnix-cli";
+        tnixLsp = tnixHaskellPackages."tnix-lsp";
 
         vp = pkgs.writeShellScriptBin "vp" ''
           if [ -x "$PWD/node_modules/.bin/vp" ]; then
@@ -25,6 +37,25 @@
       in
       {
         formatter = pkgs.nixfmt-rfc-style;
+
+        packages = {
+          default = tnixCli;
+          tnix = tnixCli;
+          tnix-lsp = tnixLsp;
+          tnix-core = tnixHaskellPackages."tnix-core";
+        };
+
+        apps = {
+          default = self.apps.${system}.tnix;
+          tnix = {
+            type = "app";
+            program = "${tnixCli}/bin/tnix";
+          };
+          tnix-lsp = {
+            type = "app";
+            program = "${tnixLsp}/bin/tnix-lsp";
+          };
+        };
 
         devShells.default = pkgs.mkShell {
           packages = [

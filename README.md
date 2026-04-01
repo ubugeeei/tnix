@@ -75,4 +75,12 @@ The primary distribution channel is GitHub Releases. Tagged releases publish
 prebuilt `tnix` and `tnix-lsp` archives for supported platforms together with
 checksums.
 
+The flake also exports installable packages and runnable apps:
+
+```bash
+nix build github:ubugeeei/tnix#tnix
+nix run github:ubugeeei/tnix#tnix -- check ./main.tnix
+nix run github:ubugeeei/tnix#tnix-lsp
+```
+
 See [RELEASING.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/RELEASING.md) for the release flow.
