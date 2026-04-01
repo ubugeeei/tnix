@@ -33,6 +33,7 @@ import Alias
 import Check
 import Compile
 import Emit
+import Indexed
 import Kind
 import Parser
 import Syntax
@@ -61,6 +62,7 @@ analyzeText path input = do
     supportWorld <- support
     program <- parseText path input
     _ <- validateProgramKinds (programAliases program <> worldAliases supportWorld) program
+    _ <- validateProgramIndexedTypes program
     localAmbient <- collectAmbient path program
     let aliases = mkAliasEnv (programAliases program <> worldAliases supportWorld)
         ambient = localAmbient <> worldAmbient supportWorld
@@ -132,6 +134,7 @@ loadDeclarationFile path = do
       Just _ -> Left ("declaration files must not contain executable expressions: " <> path)
       Nothing -> do
         _ <- validateProgramKinds (programAliases program) program
+        _ <- validateProgramIndexedTypes program
         ambient <- collectAmbient path program
         pure World {worldAliases = programAliases program, worldAmbient = ambient}
 

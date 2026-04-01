@@ -14,7 +14,7 @@ module Check
   )
 where
 
-import Control.Monad (foldM, forM, when)
+import Control.Monad (foldM, forM, when, zipWithM)
 import Control.Monad.State.Strict
 import Data.List (group, sort)
 import Data.Map.Strict (Map)
@@ -22,6 +22,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import System.FilePath ((</>), isAbsolute, joinPath, normalise, splitDirectories, takeDirectory)
 import Alias
+import Indexed
 import Subtyping
 import Syntax
 import Type
@@ -125,12 +126,8 @@ inferExpr ctx env = \case
     noTy <- inferExpr ctx env noExpr
     pure (joinTypes (checkAliases ctx) yesTy noTy)
   EList members ->
-    case members of
-      [] -> pure (tList tDynamic)
-      x : xs -> do
-        firstTy <- inferExpr ctx env x
-        elemTy <- foldM (\acc expr -> inferExpr ctx env expr >>= \ty -> pure (joinTypes (checkAliases ctx) acc ty)) firstTy xs
-        pure (tList elemTy)
+    traverse (inferExpr ctx env) members
+      >>= pure . inferListType (joinTypes (checkAliases ctx))
 
 inferLet :: CheckContext -> TypeEnv -> [LetItem] -> InferM (TypeEnv, Map Name Scheme)
 inferLet ctx env items = do
@@ -173,12 +170,15 @@ zonk ty = substituteMetas <$> gets substitutions <*> pure ty
 
 unify :: CheckContext -> Type -> Type -> InferM Type
 unify ctx left right = do
-  left' <- zonk left
-  right' <- zonk right
+  left' <- normalizeIndexedType <$> zonk left
+  right' <- normalizeIndexedType <$> zonk right
   case (left', right') of
     (TMeta n, TMeta m) | n == m -> pure left'
     (TMeta n, ty) -> bindMeta n ty
     (ty, TMeta n) -> bindMeta n ty
+    (TTypeList xs, TTypeList ys)
+      | length xs == length ys ->
+          TTypeList <$> zipWithM (unify ctx) xs ys
     (TFun a b, TFun c d) -> TFun <$> unify ctx a c <*> unify ctx b d
     (TRecord a, TRecord b) -> unifyRecord a b
     (TApp f x, TApp g y) -> TApp <$> unify ctx f g <*> unify ctx x y

@@ -16,6 +16,7 @@ library
     , Compile
     , Driver
     , Emit
+    , Indexed
     , Kind
     , Parser
     , ParserExpr
@@ -48,6 +49,7 @@ common spec-defaults
     , Compile
     , Driver
     , Emit
+    , Indexed
     , Kind
     , Parser
     , ParserExpr
@@ -85,6 +87,11 @@ test-suite tnix-kind-spec
   import: spec-defaults
   type: exitcode-stdio-1.0
   main-is: Kind.spec.hs
+
+test-suite tnix-indexed-spec
+  import: spec-defaults
+  type: exitcode-stdio-1.0
+  main-is: Indexed.spec.hs
 
 test-suite tnix-driver-spec
   import: spec-defaults

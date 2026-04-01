@@ -66,14 +66,15 @@ expandAliases env = go 0
     go depth ty
       | depth > 32 = ty
       | otherwise =
-          case ty of
-            TFun a b -> TFun (go (depth + 1) a) (go (depth + 1) b)
-            TRecord fields -> TRecord (fmap (go (depth + 1)) fields)
-            TUnion members -> flattenUnion (TUnion (map (go (depth + 1)) members))
-            TApp f x -> reduce depth (go (depth + 1) f) (go (depth + 1) x)
-            TForall vars body -> TForall vars (go (depth + 1) body)
-            TConditional a b c d -> TConditional (go (depth + 1) a) (go (depth + 1) b) (go (depth + 1) c) (go (depth + 1) d)
-            other -> other
+        case ty of
+          TTypeList items -> TTypeList (map (go (depth + 1)) items)
+          TFun a b -> TFun (go (depth + 1) a) (go (depth + 1) b)
+          TRecord fields -> TRecord (fmap (go (depth + 1)) fields)
+          TUnion members -> flattenUnion (TUnion (map (go (depth + 1)) members))
+          TApp f x -> reduce depth (go (depth + 1) f) (go (depth + 1) x)
+          TForall vars body -> TForall vars (go (depth + 1) body)
+          TConditional a b c d -> TConditional (go (depth + 1) a) (go (depth + 1) b) (go (depth + 1) c) (go (depth + 1) d)
+          other -> other
 
     reduce :: Int -> Type -> Type -> Type
     reduce depth f x =
@@ -106,6 +107,13 @@ matchPattern actual patternTy = go Map.empty actual patternTy
           env' <- acc
           actualTy <- Map.lookup name a
           go env' actualTy ty
+    go env (TTypeList actualItems) (TTypeList patternItems)
+      | length actualItems == length patternItems =
+          foldl
+            (\acc (actualTy, nextPatternTy) -> acc >>= \env' -> go env' actualTy nextPatternTy)
+            (Just env)
+            (zip actualItems patternItems)
+      | otherwise = Nothing
     go env (TApp a b) (TApp c d) = go env a c >>= \env' -> go env' b d
     go env value other | value == other = Just env
     go _ _ _ = Nothing

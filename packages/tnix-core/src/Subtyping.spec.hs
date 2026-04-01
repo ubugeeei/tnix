@@ -38,6 +38,12 @@ spec = describe "subtyping and type reduction" $ do
     resolveType env (TApp (TApp (TCon "Apply") (TCon "List")) tString)
       `shouldBe` tList tString
 
+  it "normalizes indexed containers to canonical tensor shapes" $ do
+    resolveType mempty (TApp (TApp (TCon "Vec") (TLit (LInt 3))) tInt)
+      `shouldBe` TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 3)])) tInt
+    resolveType mempty (TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 4))) tString)
+      `shouldBe` TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 4)])) tString
+
   it "evaluates conditional types by pattern matching with infer" $ do
     let elemOf = TConditional (tList tInt) (TApp (TCon "List") (TInfer "U")) (TVar "U") tDynamic
     resolveType mempty elemOf `shouldBe` tInt
@@ -45,6 +51,14 @@ spec = describe "subtyping and type reduction" $ do
   it "joins compatible types and falls back to unions" $ do
     joinTypes mempty (TLit (LString "x")) tString `shouldBe` tString
     joinTypes mempty tInt tString `shouldBe` TUnion [tInt, tString]
+
+  it "treats tensors as nested lists for subtyping and joins" $ do
+    let vec2 = TApp (TApp (TCon "Vec") (TLit (LInt 2))) tInt
+        vec3 = TApp (TApp (TCon "Vec") (TLit (LInt 3))) tInt
+        matrix22 = TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 2))) tInt
+    isSubtype mempty vec2 (tList tInt) `shouldBe` True
+    isSubtype mempty matrix22 (tList vec2) `shouldBe` True
+    joinTypes mempty vec2 vec3 `shouldBe` tList tInt
 
   it "joins shared fields across union members and rejects partial records" $ do
     lookupRecordField mempty (TUnion [TRecord (Map.fromList [("value", TLit (LInt 1))]), TRecord (Map.fromList [("value", tString)])]) "value"

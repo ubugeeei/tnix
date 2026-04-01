@@ -44,13 +44,19 @@ spec = describe "analysis" $ do
   it "reports unbound names" $
     analyzeText "main.tnix" "missing" >>= (`expectLeftContaining` "unbound name")
 
-  it "joins list element types instead of forcing eager normalization" $ do
+  it "infers exact vector roots while preserving precise element unions" $ do
     analysis <- analyzeText "main.tnix" "[1 2]" >>= expectRight
-    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "List (1 | 2)"
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Vec 2 (1 | 2)"
 
-  it "infers empty lists as gradually typed lists" $ do
+  it "infers empty lists as zero-length vectors" $ do
     analysis <- analyzeText "main.tnix" "[]" >>= expectRight
-    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "List dynamic"
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Vec 0 dynamic"
+
+  it "infers matrix and tensor roots from nested list literals" $ do
+    matrixAnalysis <- analyzeText "main.tnix" "[[1 2] [3 4]]" >>= expectRight
+    tensorAnalysis <- analyzeText "main.tnix" "[[[1] [2]] [[3] [4]]]" >>= expectRight
+    fmap renderScheme (analysisRoot matrixAnalysis) `shouldBe` Just "Matrix 2 2 (1 | 2 | 3 | 4)"
+    fmap renderScheme (analysisRoot tensorAnalysis) `shouldBe` Just "Tensor [ 2 2 1 ] (1 | 2 | 3 | 4)"
 
   it "uses inline ambient declarations for imports" $ do
     analysis <-
@@ -94,6 +100,28 @@ spec = describe "analysis" $ do
         )
         >>= expectRight
     fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Apply (Id List) Int"
+
+  it "checks Vec, Matrix, and Tensor annotations against list literals" $ do
+    vectorAnalysis <-
+      analyzeText "main.tnix" (source ["let xs :: Vec 3 Int;", "    xs = [1 2 3];", "in xs"])
+        >>= expectRight
+    matrixAnalysis <-
+      analyzeText "main.tnix" (source ["let grid :: Matrix 2 2 Int;", "    grid = [[1 2] [3 4]];", "in grid"])
+        >>= expectRight
+    tensorAnalysis <-
+      analyzeText
+        "main.tnix"
+        (source ["let cube :: Tensor [2 2 1] Int;", "    cube = [[[1] [2]] [[3] [4]]];", "in cube"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot vectorAnalysis) `shouldBe` Just "Vec 3 Int"
+    fmap renderScheme (analysisRoot matrixAnalysis) `shouldBe` Just "Matrix 2 2 Int"
+    analysisRoot tensorAnalysis
+      `shouldBe`
+        Just
+          ( Scheme
+              []
+              (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 2), TLit (LInt 1)])) tInt)
+          )
 
   it "treats imports without declarations as dynamic for incremental adoption" $ do
     analysis <- analyzeText "main.tnix" "import ./unknown.nix" >>= expectRight
@@ -154,6 +182,12 @@ spec = describe "analysis" $ do
           ]
       )
       >>= (`expectLeftContaining` "kind mismatch")
+
+  it "rejects indexed annotations with invalid dimensions and mismatched shapes" $ do
+    analyzeText "main.tnix" "let xs :: Vec \"wide\" Int; xs = [1]; in xs"
+      >>= (`expectLeftContaining` "nat-like")
+    analyzeText "main.tnix" "let xs :: Vec 2 Int; xs = [1 2 3]; in xs"
+      >>= (`expectLeftContaining` "type mismatch")
 
   it "rejects missing bindings and explicit signature mismatches" $ do
     analyzeText "main.tnix" (source ["let", "  value :: Int;", "in 1"])

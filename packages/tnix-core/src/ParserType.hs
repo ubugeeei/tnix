@@ -58,7 +58,8 @@ appParser = foldl1 TApp <$> some atomParser
 atomParser :: Parser Type
 atomParser =
   choice
-    [ recordParser,
+    [ typeListParser,
+      recordParser,
       TLit . LString <$> stringLiteral,
       TLit . LInt <$> integer,
       TLit (LBool True) <$ reserved "true",
@@ -79,6 +80,23 @@ recordParser = TRecord . Map.fromList <$> braces (many fieldParser)
       ty <- typeParser
       _ <- symbol ";"
       pure (name, ty)
+
+-- | Parse type-level shape lists such as `[2 3 4]`.
+typeListParser :: Parser Type
+typeListParser = TTypeList <$> brackets (many shapeItemParser)
+
+shapeItemParser :: Parser Type
+shapeItemParser =
+  choice
+    [ TLit . LString <$> stringLiteral,
+      TLit . LInt <$> integer,
+      TLit (LBool True) <$ reserved "true",
+      TLit (LBool False) <$ reserved "false",
+      TDynamic <$ reserved "dynamic",
+      inferParser,
+      parens typeParser,
+      varOrConParser
+    ]
 
 -- | Parse an `infer` binder used inside conditional-type patterns.
 inferParser :: Parser Type

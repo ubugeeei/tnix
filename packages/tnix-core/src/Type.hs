@@ -84,6 +84,7 @@ data Type
   | TCon Name
   | TMeta Int
   | TLit LiteralType
+  | TTypeList [Type]
   | TDynamic
   | TFun Type Type
   | TRecord (Map Name Type)
@@ -143,6 +144,7 @@ schemeFromAnnotation ty = Scheme [] ty
 eraseForall :: Type -> Type
 eraseForall = \case
   TForall _ body -> eraseForall body
+  TTypeList items -> TTypeList (eraseForall <$> items)
   TFun a b -> TFun (eraseForall a) (eraseForall b)
   TRecord fields -> TRecord (fmap eraseForall fields)
   TUnion members -> TUnion (eraseForall <$> members)
@@ -153,6 +155,7 @@ eraseForall = \case
 freeTypeVars :: Type -> Set Name
 freeTypeVars = \case
   TVar name -> Set.singleton name
+  TTypeList items -> foldMap freeTypeVars items
   TFun a b -> freeTypeVars a <> freeTypeVars b
   TRecord fields -> foldMap freeTypeVars fields
   TUnion members -> foldMap freeTypeVars members
@@ -168,6 +171,7 @@ freeTypeVars = \case
 freeMetas :: Type -> Set Int
 freeMetas = \case
   TMeta n -> Set.singleton n
+  TTypeList items -> foldMap freeMetas items
   TFun a b -> freeMetas a <> freeMetas b
   TRecord fields -> foldMap freeMetas fields
   TUnion members -> foldMap freeMetas members
@@ -190,6 +194,7 @@ substituteTypeVars env = go
   where
     go = \case
       TVar name -> Map.findWithDefault (TVar name) name env
+      TTypeList items -> TTypeList (go <$> items)
       TFun a b -> TFun (go a) (go b)
       TRecord fields -> TRecord (fmap go fields)
       TUnion members -> TUnion (go <$> members)
@@ -207,6 +212,7 @@ substituteMetas env = go
   where
     go = \case
       TMeta n -> maybe (TMeta n) go (Map.lookup n env)
+      TTypeList items -> TTypeList (go <$> items)
       TFun a b -> TFun (go a) (go b)
       TRecord fields -> TRecord (fmap go fields)
       TUnion members -> TUnion (go <$> members)

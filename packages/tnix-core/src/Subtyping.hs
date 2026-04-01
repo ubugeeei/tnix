@@ -18,6 +18,7 @@ where
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Alias
+import Indexed
 import Type
 
 -- | Reduce aliases, erase top-level `forall`, and evaluate conditional types.
@@ -25,13 +26,14 @@ import Type
 -- Most higher-level algorithms call this before comparing types so they see a
 -- normalized structural view instead of the user-written surface form.
 resolveType :: AliasEnv -> Type -> Type
-resolveType env = go 0 . expandAliases env . eraseForall
+resolveType env = go 0 . normalizeIndexedType . expandAliases env . eraseForall
   where
     go :: Int -> Type -> Type
     go depth ty
       | depth > 32 = ty
       | otherwise =
-          case expandAliases env ty of
+          case normalizeIndexedType (expandAliases env ty) of
+            TTypeList items -> TTypeList (map (go (depth + 1)) items)
             TFun a b -> TFun (go (depth + 1) a) (go (depth + 1) b)
             TRecord fields -> TRecord (fmap (go (depth + 1)) fields)
             TUnion members -> flattenUnion (TUnion (map (go (depth + 1)) members))
@@ -69,14 +71,23 @@ lookupRecordField env ty field =
 -- Where possible this returns an existing supertype; otherwise it constructs a
 -- normalized union.
 joinTypes :: AliasEnv -> Type -> Type -> Type
-joinTypes env left right
-  | left' == right' = left'
-  | isSubtype env left' right' = right'
-  | isSubtype env right' left' = left'
-  | otherwise = flattenUnion (TUnion [left', right'])
+joinTypes env left right =
+  case (tensorView left', tensorView right') of
+    (Just (leftShape, leftElem), Just (rightShape, rightElem))
+      | leftShape == rightShape -> surfaceTensor leftShape (joinTypes env leftElem rightElem)
+      | otherwise ->
+          case (tensorListView left', tensorListView right') of
+            (Just leftList, Just rightList) -> joinTypes env leftList rightList
+            _ -> fallback
+    _ -> fallback
   where
     left' = resolveType env left
     right' = resolveType env right
+    fallback
+      | left' == right' = left'
+      | isSubtype env left' right' = right'
+      | isSubtype env right' left' = left'
+      | otherwise = flattenUnion (TUnion [left', right'])
 
 -- | Decide whether two types can coexist under gradual typing rules.
 --
@@ -104,12 +115,26 @@ isSubtype env left right = go (resolveType env left) (resolveType env right)
     go (TLit (LString _)) ty | ty == tString = True
     go (TLit (LInt _)) ty | ty == tInt = True
     go (TLit (LBool _)) ty | ty == tBool = True
+    go (TTypeList xs) (TTypeList ys) = length xs == length ys && and (zipWith go xs ys)
     go _ TDynamic = True
     go TDynamic _ = False
     go a (TUnion members) = any (go a) members
     go (TUnion members) b = all (`go` b) members
+    go a b
+      | Just (leftShape, leftElem) <- tensorView a,
+        Just (rightShape, rightElem) <- tensorView b =
+          leftShape == rightShape && go leftElem rightElem
+      | Just leftList <- tensorListView a =
+          go leftList b
     go (TFun a b) (TFun c d) = go c a && go b d
     go (TRecord fields) (TRecord expected) =
       all (\(name, ty) -> maybe False (`go` ty) (Map.lookup name fields)) (Map.toList expected)
     go (TApp f x) (TApp g y) = go f g && go x y
     go _ _ = False
+
+surfaceTensor :: [Type] -> Type -> Type
+surfaceTensor dims elemTy =
+  case dims of
+    [lenTy] -> TApp (TApp (TCon "Vec") lenTy) elemTy
+    [rowsTy, colsTy] -> TApp (TApp (TApp (TCon "Matrix") rowsTy) colsTy) elemTy
+    _ -> TApp (TApp (TCon "Tensor") (TTypeList dims)) elemTy

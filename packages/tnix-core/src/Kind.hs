@@ -125,6 +125,7 @@ inferKind env local = \case
   TCon name -> maybe (flexibleKind name) pure (Map.lookup name env)
   TMeta _ -> pure KType
   TLit _ -> pure KType
+  TTypeList members -> traverse_ (inferTypeLeaf env local) members >> pure KType
   TDynamic -> pure KType
   TFun left right -> inferTypeLeaf env local left >> inferTypeLeaf env local right >> pure KType
   TRecord fields -> traverse_ (inferTypeLeaf env local) fields >> pure KType
@@ -262,9 +263,12 @@ builtinKinds =
     [ ("Bool", KType),
       ("Int", KType),
       ("List", KFun KType KType),
+      ("Matrix", KFun KType (KFun KType (KFun KType KType))),
       ("Null", KType),
       ("Path", KType),
-      ("String", KType)
+      ("String", KType),
+      ("Tensor", KFun KType (KFun KType KType)),
+      ("Vec", KFun KType (KFun KType KType))
     ]
 
 nextKindSeed :: AliasKindEnv -> Int

@@ -152,6 +152,19 @@ spec = describe "compile and emit" $ do
     program <- expectRight (parseDecl "main.d.tnix" output)
     programAliases program `shouldBe` [TypeAlias "Box" ["t"] (TRecord (Map.fromList [("value", TVar "t")]))]
 
+  it "emits indexed container roots with their inferred shapes" $ do
+    output <- emitText "main.tnix" "[[1 2] [3 4]]" >>= expectRight
+    program <- expectRight (parseDecl "main.d.tnix" output)
+    programAmbient program
+      `shouldBe`
+        [ AmbientDecl
+            "./main.nix"
+            [ AmbientEntry
+                "default"
+                (TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 2))) (TUnion [TLit (LInt 1), TLit (LInt 2), TLit (LInt 3), TLit (LInt 4)]))
+            ]
+        ]
+
   it "emits declarations relative to the source basename" $ do
     output <- emitText "nested/app/main.tnix" "{ value = 1; }" >>= expectRight
     Text.isInfixOf "declare \"./main.nix\"" output `shouldBe` True

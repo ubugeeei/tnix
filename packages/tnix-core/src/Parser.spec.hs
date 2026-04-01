@@ -43,6 +43,17 @@ spec = describe "parseProgram" $ do
     programAliases program
       `shouldBe` [TypeAlias "Elem" ["t"] (TConditional (TVar "t") (TApp (TCon "List") (TInfer "u")) (TVar "u") TDynamic)]
 
+  it "parses indexed container types and tensor shapes" $ do
+    program <- expectRight $ parseProgram "main.tnix" "type Grid t = Matrix 2 3 t; type Cube t = Tensor [2 3 4] t;"
+    programAliases program
+      `shouldBe`
+        [ TypeAlias "Grid" ["t"] (TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 3))) (TVar "t")),
+          TypeAlias
+            "Cube"
+            ["t"]
+            (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3), TLit (LInt 4)])) (TVar "t"))
+        ]
+
   it "parses typed lambda binders" $ do
     program <- expectRight $ parseProgram "main.tnix" "(x :: Int): x"
     programExpr program `shouldBe` Just (ELambda (PVar "x" (Just tInt)) (EVar "x"))
