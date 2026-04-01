@@ -32,6 +32,19 @@
           "type": "string",
           "default": "tnix-lsp",
           "description": "Path to the tnix language server executable."
+        },
+        "tnix.server.args": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional command-line arguments passed to the tnix language server."
+        },
+        "tnix.server.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Optional working directory used when starting the tnix language server."
         }
       }
     }

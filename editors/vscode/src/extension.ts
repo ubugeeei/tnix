@@ -20,6 +20,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const config = vscode.workspace.getConfiguration("tnix");
   const runtime = resolveRuntimeConfig(
     config.get<string>("server.path"),
+    config.get<string[]>("server.args"),
+    config.get<string>("server.cwd"),
     vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath),
   );
   const executable: Executable = {
