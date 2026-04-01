@@ -22,9 +22,9 @@ main = hspec spec
 
 spec :: Spec
 spec = describe "ecosystem registry" $ do
-  it "parses and validates the bundled registry declaration files" $ do
+  it "parses and validates the bundled declaration files" $ do
     root <- findRepoRoot =<< getCurrentDirectory
-    forM_ registryFiles $ \relative -> do
+    forM_ bundledDeclarationFiles $ \relative -> do
       input <- TextIO.readFile (root </> relative)
       program <- expectRight (parseProgram (root </> relative) input)
       programExpr program `shouldBe` Nothing
@@ -167,6 +167,14 @@ registryFiles =
     "registry/flake-ecosystem.d.tnix",
     "registry/community-flakes.d.tnix"
   ]
+
+bundledDeclarationFiles :: [FilePath]
+bundledDeclarationFiles =
+  [ "builtins.d.tnix",
+    "flake.d.tnix",
+    "tnix.config.d.tnix"
+  ]
+    <> registryFiles
 
 loadRegistry :: FilePath -> [FilePath] -> IO [(FilePath, Text)]
 loadRegistry root files =

@@ -113,14 +113,18 @@ spec = do
       withTempTree [] $ \root -> do
         output <- executeCommand (Init (Just root)) >>= expectRight
         let configPath = root </> "tnix.config.tnix"
+            configDeclPath = root </> "tnix.config.d.tnix"
             entryPath = root </> "src/main.tnix"
             builtinsPath = root </> "types/builtins.d.tnix"
         doesFileExist configPath `shouldReturn` True
+        doesFileExist configDeclPath `shouldReturn` True
         doesFileExist entryPath `shouldReturn` True
         doesFileExist builtinsPath `shouldReturn` True
         config <- TextIO.readFile configPath
+        configDecl <- TextIO.readFile configDeclPath
         entry <- TextIO.readFile entryPath
         Text.isInfixOf "sourceDir = ./src;" config `shouldBe` True
+        Text.isInfixOf "declare \"./tnix.config.tnix\"" configDecl `shouldBe` True
         Text.isInfixOf "Hello from" entry `shouldBe` True
         Text.isInfixOf "tnix.config.tnix" output `shouldBe` True
 
@@ -141,10 +145,12 @@ spec = do
         ]
         $ \root -> do
           output <- executeCommand (Scaffold (Just root)) >>= expectRight
+          doesFileExist (root </> "tnix.config.d.tnix") `shouldReturn` True
           TextIO.readFile (root </> "app/custom.tnix") `shouldReturn` "existing"
           doesFileExist (root </> "decls/builtins.d.tnix") `shouldReturn` True
           Text.isInfixOf "skipped" output `shouldBe` True
           Text.isInfixOf "builtins.d.tnix" output `shouldBe` True
+          Text.isInfixOf "tnix.config.d.tnix" output `shouldBe` True
 
     it "respects builtins = false when scaffolding" $
       withTempTree

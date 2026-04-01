@@ -522,6 +522,41 @@ spec = describe "analysis" $ do
             `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("value", tInt)])))
       )
 
+  it "loads a bundled tnix.config declaration for config imports" $
+    withTempTree
+      [ ( "tnix.config.tnix",
+          source
+            [ "{",
+              "  name = \"demo\";",
+              "  sourceDir = ./src;",
+              "  entry = ./src/main.tnix;",
+              "  declarationDir = ./types;",
+              "  builtins = true;",
+              "}"
+            ]
+        ),
+        ( "tnix.config.d.tnix",
+          source
+            [ "type TnixProjectPath = Path | String;",
+              "type TnixProjectConfig = {",
+              "  name :: String;",
+              "  sourceDir :: TnixProjectPath;",
+              "  entry :: TnixProjectPath;",
+              "  declarationDir :: TnixProjectPath;",
+              "  builtins :: Bool;",
+              "};",
+              "declare \"./tnix.config.tnix\" {",
+              "  default :: TnixProjectConfig;",
+              "};"
+            ]
+        ),
+        ("src/main.tnix", "(import ../tnix.config.tnix).declarationDir")
+      ]
+      ( \root -> do
+          analysis <- analyzeFile (root <> "/src/main.tnix") >>= expectRight
+          fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Path | String"
+      )
+
   it "joins field types when selecting from unions of compatible records" $ do
     analysis <-
       analyzeText
