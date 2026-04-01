@@ -42,6 +42,14 @@ spec = describe "indexed containers" $ do
       ]
       `shouldBe` tList (TApp (TApp (TCon "Vec") (TUnion [TLit (LInt 1), TLit (LInt 2)])) tInt)
 
+  it "infers zero-width matrices from empty rows" $
+    inferListType
+      (joinTypes mempty)
+      [ TApp (TApp (TCon "Vec") (TLit (LInt 0))) tDynamic,
+        TApp (TApp (TCon "Vec") (TLit (LInt 0))) tDynamic
+      ]
+      `shouldBe` TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 0))) tDynamic
+
   it "treats tensors as nested lists when widened structurally" $
     tensorListView (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3)])) tInt)
       `shouldBe` Just (tList (normalizeIndexedType (TApp (TApp (TCon "Vec") (TLit (LInt 3))) tInt)))
@@ -70,17 +78,35 @@ spec = describe "indexed containers" $ do
           "type Grid t = Matrix (Range 1 2 Nat) (2 | 3) t; type Cube t = Tensor [2 (Range 1 2 Nat) 1] t; let grid :: Grid Int; grid = [[1 2] [3 4]]; in grid"
     validateProgramIndexedTypes program `shouldBe` Right ()
 
+  it "accepts exact-zero ranges and zero dimensions as valid nat-like shapes" $ do
+    program <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "type EmptyVec t = Vec (Range 0 0 Nat) t; type EmptyGrid t = Matrix 0 (Range 0 2 Nat) t;"
+    validateProgramIndexedTypes program `shouldBe` Right ()
+
   it "rejects non-nat ranges and malformed unit validators" $ do
     natRangeProgram <-
       expectRight $
         parseProgram
           "main.tnix"
           "let xs :: Vec (Range 0.0 2.0 Nat) Int; xs = [1 2]; in xs"
+    floatIntRangeProgram <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "type Bad = Range 0.0 2.0 Int; 1"
     invertedRangeProgram <-
       expectRight $
         parseProgram
           "main.tnix"
           "let xs :: Vec (Range 4 2 Nat) Int; xs = [1 2]; in xs"
+    numberNatRangeProgram <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "let xs :: Vec (Range 0 2 Number) Int; xs = [1 2]; in xs"
     unitProgram <-
       expectRight $
         parseProgram
@@ -92,7 +118,9 @@ spec = describe "indexed containers" $ do
           "main.tnix"
           "let xs :: Tensor [Unit \"ms\" Nat] Int; xs = [[1]]; in xs"
     validateProgramIndexedTypes natRangeProgram `shouldSatisfy` isLeft
+    validateProgramIndexedTypes floatIntRangeProgram `shouldSatisfy` isLeft
     validateProgramIndexedTypes invertedRangeProgram `shouldSatisfy` isLeft
+    validateProgramIndexedTypes numberNatRangeProgram `shouldSatisfy` isLeft
     validateProgramIndexedTypes unitProgram `shouldSatisfy` isLeft
     validateProgramIndexedTypes unitShapeProgram `shouldSatisfy` isLeft
   where

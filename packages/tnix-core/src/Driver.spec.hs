@@ -80,6 +80,10 @@ spec = describe "analysis" $ do
     fmap renderScheme (analysisRoot matrixAnalysis) `shouldBe` Just "Matrix 2 2 (1 | 2 | 3 | 4)"
     fmap renderScheme (analysisRoot tensorAnalysis) `shouldBe` Just "Tensor [ 2 2 1 ] (1 | 2 | 3 | 4)"
 
+  it "preserves ragged nested list roots as structural lists of vectors" $ do
+    analysis <- analyzeText "main.tnix" "[[1] [2 3]]" >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "List (Vec (1 | 2) (1 | 2 | 3))"
+
   it "uses inline ambient declarations for imports" $ do
     analysis <-
       analyzeText
@@ -212,6 +216,12 @@ spec = describe "analysis" $ do
       (source ["let timeout :: Unit \"ms\" (Range 0 5000 Nat);", "    timeout = 9000;", "in timeout"])
       >>= (`expectLeftContaining` "type mismatch")
 
+  it "accepts exact-zero bounded vectors" $ do
+    analysis <-
+      analyzeText "main.tnix" (source ["let xs :: Vec (Range 0 0 Nat) Int;", "    xs = [];", "in xs"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Vec (Range 0 0 Nat) Int"
+
   it "accepts inclusive endpoints for int and float validators" $ do
     timeoutLow <-
       analyzeText "main.tnix" (source ["let timeout :: Unit \"ms\" (Range 0 5000 Nat);", "    timeout = 0;", "in timeout"])
@@ -265,6 +275,16 @@ spec = describe "analysis" $ do
           ]
       )
       >>= (`expectLeftContaining` "type mismatch")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  timeout :: Unit \"ms\" Nat;",
+            "  timeout = 0.5;",
+            "in timeout"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
 
   it "rejects invalid numeric validator declarations and out-of-range shape unions" $ do
     analyzeText
@@ -294,6 +314,26 @@ spec = describe "analysis" $ do
             "  grid :: Matrix 2 2 Int;",
             "  grid = [[1 2] [3]];",
             "in grid"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  grid :: Matrix (Range 1 2 Nat) 2 Int;",
+            "  grid = [[1 2] [3 4] [5 6]];",
+            "in grid"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  cube :: Tensor [2 (Range 1 2 Nat) 1] Int;",
+            "  cube = [[[1] [2] [3]] [[4] [5] [6]]];",
+            "in cube"
           ]
       )
       >>= (`expectLeftContaining` "type mismatch")
@@ -402,6 +442,8 @@ spec = describe "analysis" $ do
     analyzeText "main.tnix" "let xs :: Vec \"wide\" Int; xs = [1]; in xs"
       >>= (`expectLeftContaining` "nat-like")
     analyzeText "main.tnix" "let xs :: Vec (Unit \"ms\" Nat) Int; xs = [1]; in xs"
+      >>= (`expectLeftContaining` "nat-like")
+    analyzeText "main.tnix" "let xs :: Vec (Range 0.0 2.0 Nat) Int; xs = [1]; in xs"
       >>= (`expectLeftContaining` "nat-like")
     analyzeText "main.tnix" "let xs :: Vec 2 Int; xs = [1 2 3]; in xs"
       >>= (`expectLeftContaining` "type mismatch")

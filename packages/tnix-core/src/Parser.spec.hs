@@ -65,6 +65,27 @@ spec = describe "parseProgram" $ do
         ]
     programExpr program `shouldBe` Just (EFloat 1.5)
 
+  it "parses parenthesized refinements and unions inside tensor shapes" $ do
+    program <- expectRight $ parseProgram "main.tnix" "type Batch t = Tensor [(Range 0 2 Nat) (1 | 2) 4] t;"
+    programAliases program
+      `shouldBe`
+        [ TypeAlias
+            "Batch"
+            ["t"]
+            ( TApp
+                ( TApp
+                    (TCon "Tensor")
+                    ( TTypeList
+                        [ TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 2))) tNat,
+                          TUnion [TLit (LInt 1), TLit (LInt 2)],
+                          TLit (LInt 4)
+                        ]
+                    )
+                )
+                (TVar "t")
+            )
+        ]
+
   it "parses tuple types as type-only heterogeneous sequences" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Pair = Tuple [Int String];"
     programAliases program

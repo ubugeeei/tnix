@@ -93,6 +93,12 @@ spec = describe "subtyping and type reduction" $ do
         bounded = TApp (TApp (TCon "Vec") (TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 2))) tNat)) tInt
     isSubtype mempty emptyVec bounded `shouldBe` True
 
+  it "rejects nat subtyping when integer ranges cross below zero" $ do
+    let signed = TApp (TApp (TApp (TCon "Range") (TLit (LInt (-1)))) (TLit (LInt 2))) tInt
+        positive = TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 2))) tNat
+    isSubtype mempty signed tNat `shouldBe` False
+    isSubtype mempty signed positive `shouldBe` False
+
   it "checks numeric refinements and unit wrappers structurally" $ do
     let smallNat = TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 10))) tNat
         widerNat = TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 20))) tNat
@@ -119,6 +125,13 @@ spec = describe "subtyping and type reduction" $ do
     joinTypes mempty timeout timeoutSeconds
       `shouldBe` TUnion [timeout, timeoutSeconds]
 
+  it "preserves enclosing refinements when joining enclosed literals" $ do
+    let smallNat = TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 10))) tNat
+        timeout = TApp (TApp (TCon "Unit") (TLit (LString "ms"))) smallNat
+    joinTypes mempty (TLit (LInt 3)) smallNat `shouldBe` smallNat
+    joinTypes mempty (TLit (LInt 3)) timeout `shouldBe` timeout
+    isSubtype mempty (TLit (LString "oops")) timeout `shouldBe` False
+
   it "treats tuples as fixed heterogeneous lists" $ do
     let pair = TApp (TCon "Tuple") (TTypeList [tInt, tString])
         pairLits = TApp (TCon "Tuple") (TTypeList [TLit (LInt 1), TLit (LString "x")])
@@ -141,3 +154,10 @@ spec = describe "subtyping and type reduction" $ do
     let exact = TApp (TApp (TCon "Vec") (TLit (LInt 2))) tInt
         bounded = TApp (TApp (TCon "Vec") (TApp (TApp (TApp (TCon "Range") (TLit (LInt 2))) (TLit (LInt 4))) tNat)) tInt
     joinTypes mempty exact bounded `shouldBe` bounded
+
+  it "joins exact literals into exact unit-preserving vectors" $ do
+    let timeout = TApp (TApp (TCon "Unit") (TLit (LString "ms"))) tNat
+        leftVec = TApp (TApp (TCon "Vec") (TLit (LInt 1))) timeout
+        rightVec = TApp (TApp (TCon "Vec") (TLit (LInt 2))) timeout
+    joinTypes mempty leftVec rightVec
+      `shouldBe` TApp (TApp (TCon "Vec") (TUnion [TLit (LInt 1), TLit (LInt 2)])) timeout

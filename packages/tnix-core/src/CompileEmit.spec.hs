@@ -196,6 +196,10 @@ spec = describe "compile and emit" $ do
             ]
         ]
 
+  it "emits ragged nested list roots as structural list declarations" $ do
+    output <- emitText "main.tnix" "[[1] [2 3]]" >>= expectRight
+    Text.isInfixOf "default :: List (Vec (1 | 2) (1 | 2 | 3));" output `shouldBe` True
+
   it "emits linear function arrows in declaration output" $ do
     output <-
       emitText
@@ -224,6 +228,22 @@ spec = describe "compile and emit" $ do
         >>= expectRight
     Text.isInfixOf "default :: Unit \"ms\" (Range 0 5000 Nat);" output `shouldBe` True
 
+  it "erases numeric and unit annotations when compiling executable output" $ do
+    output <-
+      compileText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  timeout :: Unit \"ms\" (Range 0 5000 Nat);",
+              "  timeout = 2500;",
+              "in timeout"
+            ]
+        )
+        >>= expectRight
+    "Unit" `Text.isInfixOf` output `shouldBe` False
+    "Range" `Text.isInfixOf` output `shouldBe` False
+    "timeout = 2500;" `Text.isInfixOf` output `shouldBe` True
+
   it "emits bounded indexed annotations without erasing dependent shape constraints" $ do
     output <-
       emitText
@@ -237,6 +257,32 @@ spec = describe "compile and emit" $ do
         )
         >>= expectRight
     Text.isInfixOf "default :: Matrix (Range 1 2 Nat) 2 Int;" output `shouldBe` True
+
+  it "emits exact-zero and refined tensor annotations precisely" $ do
+    zeroOutput <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  xs :: Vec (Range 0 0 Nat) Int;",
+              "  xs = [];",
+              "in xs"
+            ]
+        )
+        >>= expectRight
+    tensorOutput <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  cube :: Tensor [2 (Range 1 2 Nat) 1] Int;",
+              "  cube = [[[1] [2]] [[3] [4]]];",
+              "in cube"
+            ]
+        )
+        >>= expectRight
+    Text.isInfixOf "default :: Vec (Range 0 0 Nat) Int;" zeroOutput `shouldBe` True
+    Text.isInfixOf "default :: Tensor [ 2 (Range 1 2 Nat) 1 ] Int;" tensorOutput `shouldBe` True
 
   it "emits float-based numeric validators in declaration output" $ do
     output <-
