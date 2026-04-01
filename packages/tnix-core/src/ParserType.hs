@@ -77,7 +77,9 @@ atomParser =
       TLit . LInt <$> integer,
       TLit (LBool True) <$ reserved "true",
       TLit (LBool False) <$ reserved "false",
+      TAny <$ reserved "any",
       TDynamic <$ reserved "dynamic",
+      TUnknown <$ reserved "unknown",
       inferParser,
       parens typeParser,
       varOrConParser
@@ -106,7 +108,9 @@ shapeItemParser =
       TLit . LInt <$> integer,
       TLit (LBool True) <$ reserved "true",
       TLit (LBool False) <$ reserved "false",
+      TAny <$ reserved "any",
       TDynamic <$ reserved "dynamic",
+      TUnknown <$ reserved "unknown",
       inferParser,
       parens typeParser,
       varOrConParser

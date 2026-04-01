@@ -116,8 +116,10 @@ prettyType p ty =
             TLit (LInt n) -> pretty n
             TLit (LBool True) -> "true"
             TLit (LBool False) -> "false"
+            TAny -> "any"
             TTypeList items -> "[" <+> hsep (prettyType 3 <$> items) <+> "]"
             TDynamic -> "dynamic"
+            TUnknown -> "unknown"
             TFun mult a b ->
               let arrow =
                     case mult of

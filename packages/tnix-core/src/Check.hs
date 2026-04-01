@@ -128,15 +128,19 @@ inferExpr ctx env = \case
   EApp fun arg -> do
     funTy <- inferExpr ctx env fun >>= zonk
     argTy <- inferExpr ctx env arg
-    if resolveType (checkAliases ctx) funTy == tDynamic
+    let resolvedFunTy = resolveType (checkAliases ctx) funTy
+    if resolvedFunTy == tDynamic
       then pure tDynamic
-      else do
-        case resolveType (checkAliases ctx) funTy of
-          TFun _ domTy outTy -> constrain ctx argTy domTy *> zonk outTy
-          _ -> do
-            outTy <- freshMeta
-            _ <- unify ctx funTy (TFun Many argTy outTy)
-            zonk outTy
+      else
+        if resolvedFunTy == tAny
+          then pure tAny
+          else
+            case resolvedFunTy of
+              TFun _ domTy outTy -> constrain ctx argTy domTy *> zonk outTy
+              _ -> do
+                outTy <- freshMeta
+                _ <- unify ctx funTy (TFun Many argTy outTy)
+                zonk outTy
   ELet items body -> do
     (env', _) <- inferLet ctx env items
     inferExpr ctx env' body
@@ -158,9 +162,12 @@ inferExpr ctx env = \case
     where
       step ty field =
         zonk ty >>= \resolvedTy ->
-          case lookupRecordField (checkAliases ctx) resolvedTy field of
-          Just fieldTy -> instantiate (schemeFromAnnotation fieldTy)
-          Nothing -> lift (Left ("missing field " <> show field))
+          if resolveType (checkAliases ctx) resolvedTy == tAny
+            then pure tAny
+            else
+              case lookupRecordField (checkAliases ctx) resolvedTy field of
+                Just fieldTy -> instantiate (schemeFromAnnotation fieldTy)
+                Nothing -> lift (Left ("missing field " <> show field))
   EIf cond yesExpr noExpr -> do
     condTy <- inferExpr ctx env cond
     _ <- constrain ctx condTy tBool

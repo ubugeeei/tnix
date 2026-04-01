@@ -22,6 +22,7 @@ module Type
     freeMetasScheme,
     freeTypeVars,
     schemeFromAnnotation,
+    tAny,
     substituteMetas,
     substituteTypeVars,
     tBool,
@@ -34,6 +35,7 @@ module Type
     tNumber,
     tPath,
     tString,
+    tUnknown,
   )
 where
 
@@ -87,6 +89,10 @@ data Multiplicity
 --
 -- * 'TDynamic' is the gradual escape hatch and is never compiled to runtime
 --   checks.
+-- * 'TAny' models TypeScript-style unsound escape hatches where values may
+--   flow to and from any expected shape.
+-- * 'TUnknown' is the top type: every value may be viewed as `unknown`, but
+--   callers must narrow or annotate before using it as something more precise.
 -- * 'TApp' keeps higher-kinded and alias applications first-class.
 -- * 'TConditional' and 'TInfer' provide TypeScript-style type-level pattern
 --   matching.
@@ -98,7 +104,9 @@ data Type
   | TMeta Int
   | TLit LiteralType
   | TTypeList [Type]
+  | TAny
   | TDynamic
+  | TUnknown
   | TFun Multiplicity Type Type
   | TRecord (Map Name Type)
   | TUnion [Type]
@@ -128,7 +136,7 @@ data TypeAlias = TypeAlias
   }
   deriving (Eq, Ord, Show)
 
-tString, tInt, tFloat, tNumber, tNat, tBool, tNull, tPath, tDynamic :: Type
+tString, tInt, tFloat, tNumber, tNat, tBool, tNull, tPath, tAny, tDynamic, tUnknown :: Type
 tString = TCon "String"
 tInt = TCon "Int"
 tFloat = TCon "Float"
@@ -137,7 +145,9 @@ tNat = TCon "Nat"
 tBool = TCon "Bool"
 tNull = TCon "Null"
 tPath = TCon "Path"
+tAny = TAny
 tDynamic = TDynamic
+tUnknown = TUnknown
 
 -- | Smart constructor for the built-in list type constructor.
 tList :: Type -> Type
@@ -167,6 +177,7 @@ freeTypeVars :: Type -> Set Name
 freeTypeVars = \case
   TVar name -> Set.singleton name
   TTypeList items -> foldMap freeTypeVars items
+  TAny -> Set.empty
   TFun _ a b -> freeTypeVars a <> freeTypeVars b
   TRecord fields -> foldMap freeTypeVars fields
   TUnion members -> foldMap freeTypeVars members
@@ -183,6 +194,7 @@ freeMetas :: Type -> Set Int
 freeMetas = \case
   TMeta n -> Set.singleton n
   TTypeList items -> foldMap freeMetas items
+  TAny -> Set.empty
   TFun _ a b -> freeMetas a <> freeMetas b
   TRecord fields -> foldMap freeMetas fields
   TUnion members -> foldMap freeMetas members
@@ -206,6 +218,7 @@ substituteTypeVars env = go
     go = \case
       TVar name -> Map.findWithDefault (TVar name) name env
       TTypeList items -> TTypeList (go <$> items)
+      TAny -> TAny
       TFun mult a b -> TFun mult (go a) (go b)
       TRecord fields -> TRecord (fmap go fields)
       TUnion members -> TUnion (go <$> members)
@@ -224,6 +237,7 @@ substituteMetas env = go
     go = \case
       TMeta n -> maybe (TMeta n) go (Map.lookup n env)
       TTypeList items -> TTypeList (go <$> items)
+      TAny -> TAny
       TFun mult a b -> TFun mult (go a) (go b)
       TRecord fields -> TRecord (fmap go fields)
       TUnion members -> TUnion (go <$> members)

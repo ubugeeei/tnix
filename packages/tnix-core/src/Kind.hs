@@ -126,7 +126,9 @@ inferKind env local = \case
   TMeta _ -> pure KType
   TLit _ -> pure KType
   TTypeList members -> traverse_ (inferTypeLeaf env local) members >> pure KType
+  TAny -> pure KType
   TDynamic -> pure KType
+  TUnknown -> pure KType
   TFun _ left right -> inferTypeLeaf env local left >> inferTypeLeaf env local right >> pure KType
   TRecord fields -> traverse_ (inferTypeLeaf env local) fields >> pure KType
   TUnion members -> traverse_ (inferTypeLeaf env local) members >> pure KType

@@ -146,28 +146,32 @@ lookupRecordField env ty field =
 -- @
 joinTypes :: AliasEnv -> Type -> Type -> Type
 joinTypes env left right =
-  case (unitView left', unitView right') of
-    (Just (leftUnit, leftBase), Just (rightUnit, rightBase))
-      | leftUnit == rightUnit ->
-          TApp (TApp (TCon "Unit") leftUnit) (joinTypes env leftBase rightBase)
-    _ ->
-      case (tupleView left', tupleView right') of
-        (Just leftItems, Just rightItems)
-          | length leftItems == length rightItems ->
-              TApp (TCon "Tuple") (TTypeList (zipWith (joinTypes env) leftItems rightItems))
-        _ ->
-          case (tensorView left', tensorView right') of
-            (Just (leftShape, leftElem), Just (rightShape, rightElem))
-              | length leftShape == length rightShape ->
-                  surfaceTensor (zipWith (joinTypes env) leftShape rightShape) (joinTypes env leftElem rightElem)
-              | otherwise ->
-                  case (listView left', listView right') of
-                    (Just leftList, Just rightList) -> joinTypes env leftList rightList
-                    _ -> fallback
+  case () of
+    _
+      | left' == tAny || right' == tAny -> tAny
+      | otherwise ->
+          case (unitView left', unitView right') of
+            (Just (leftUnit, leftBase), Just (rightUnit, rightBase))
+              | leftUnit == rightUnit ->
+                  TApp (TApp (TCon "Unit") leftUnit) (joinTypes env leftBase rightBase)
             _ ->
-              case (listView left', listView right') of
-                (Just leftList, Just rightList) -> joinTypes env leftList rightList
-                _ -> fallback
+              case (tupleView left', tupleView right') of
+                (Just leftItems, Just rightItems)
+                  | length leftItems == length rightItems ->
+                      TApp (TCon "Tuple") (TTypeList (zipWith (joinTypes env) leftItems rightItems))
+                _ ->
+                  case (tensorView left', tensorView right') of
+                    (Just (leftShape, leftElem), Just (rightShape, rightElem))
+                      | length leftShape == length rightShape ->
+                          surfaceTensor (zipWith (joinTypes env) leftShape rightShape) (joinTypes env leftElem rightElem)
+                      | otherwise ->
+                          case (listView left', listView right') of
+                            (Just leftList, Just rightList) -> joinTypes env leftList rightList
+                            _ -> fallback
+                    _ ->
+                      case (listView left', listView right') of
+                        (Just leftList, Just rightList) -> joinTypes env leftList rightList
+                        _ -> fallback
   where
     left' = resolveType env left
     right' = resolveType env right
@@ -196,7 +200,9 @@ joinTypes env left right =
 -- @
 isConsistent :: AliasEnv -> Type -> Type -> Bool
 isConsistent env left right =
-  left' == TDynamic
+  left' == TAny
+    || right' == TAny
+    || left' == TDynamic
     || right' == TDynamic
     || left' == right'
     || isSubtype env left' right'
@@ -233,6 +239,12 @@ isSubtype :: AliasEnv -> Type -> Type -> Bool
 isSubtype env left right = go (resolveType env left) (resolveType env right)
   where
     go a b | a == b = True
+    go _ ty | ty == tAny = True
+    go _ ty | ty == tDynamic = True
+    go ty _ | ty == tAny = True
+    go ty _ | ty == tDynamic = False
+    go _ ty | ty == tUnknown = True
+    go ty _ | ty == tUnknown = False
     go (TLit (LString _)) ty | ty == tString = True
     go (TLit (LFloat _)) ty | ty == tFloat = True
     go (TLit lit) ty | ty == tNumber = isNumericLiteral lit
@@ -244,8 +256,6 @@ isSubtype env left right = go (resolveType env left) (resolveType env right)
     go ty other | ty == tInt, other == tNumber = True
     go ty other | ty == tFloat, other == tNumber = True
     go (TTypeList xs) (TTypeList ys) = length xs == length ys && and (zipWith go xs ys)
-    go _ TDynamic = True
-    go TDynamic _ = False
     go (TUnion leftMembers) (TUnion rightMembers) =
       all (\member -> any (go member) rightMembers) leftMembers
     go a (TUnion members) = any (go a) members
