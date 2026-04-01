@@ -5,6 +5,7 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node.js";
+import { resolveRuntimeConfig } from "./runtime.js";
 
 let client: LanguageClient | undefined;
 
@@ -17,10 +18,10 @@ let client: LanguageClient | undefined;
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("tnix");
-  const command = config.get<string>("server.path", "tnix-lsp");
+  const runtime = resolveRuntimeConfig(config.get<string>("server.path"));
   const executable: Executable = {
-    command,
-    args: [],
+    command: runtime.command,
+    args: runtime.args,
     options: { env: process.env },
   };
   const serverOptions: ServerOptions = {
@@ -28,9 +29,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     debug: executable,
   };
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ language: "tnix" }],
+    documentSelector: runtime.documentSelector,
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{tnix,d.tnix}"),
+      fileEvents: vscode.workspace.createFileSystemWatcher(runtime.watchPattern),
     },
   };
 

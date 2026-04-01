@@ -39,6 +39,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit -p tsconfig.json",
+    "test": "tsc -p tsconfig.json && node --test dist/*.spec.js",
     "fmt": "prettier --check src package.json tsconfig.json language-configuration.json"
   },
   "dependencies": {
