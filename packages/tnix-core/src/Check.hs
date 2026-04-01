@@ -58,6 +58,13 @@ type TypeEnv = Map Name Scheme
 -- The built-in environment is intentionally tiny: `builtins` is left fully
 -- dynamic and `import` only promises that a path yields something. Ambient
 -- declarations refine imports when they are available.
+--
+-- The checker follows a "best effort but explicit" policy:
+--
+-- * annotations are respected when they are structurally satisfied,
+-- * gradual behavior only kicks in when `dynamic` is genuinely involved,
+-- * unresolved inference variables are closed into stable schemes before
+--   results escape the module.
 checkProgram :: CheckContext -> Program -> Either String CheckResult
 checkProgram ctx program =
   evalStateT (inferTop ctx builtins) (InferState 0 Map.empty)
@@ -75,6 +82,13 @@ checkProgram ctx program =
         ty <- inferExpr local env expr >>= zonk
         pure (CheckResult (Just (closeMetas ty)) Map.empty)
 
+-- | Infer the type of one expression under the current local environment.
+--
+-- The function is syntax-directed except for applications and annotations,
+-- where it consults `constrain`/`unify` to reconcile inferred and expected
+-- structure. List literals delegate to `inferListType`, which means exact
+-- vector, matrix, or tensor shapes can be recovered directly from surface list
+-- syntax.
 inferExpr :: CheckContext -> TypeEnv -> Expr -> InferM Type
 inferExpr ctx env = \case
   EVar name -> maybe (lift (Left ("unbound name: " <> show name))) instantiate (Map.lookup name env)
@@ -136,6 +150,16 @@ inferExpr ctx env = \case
     traverse (inferExpr ctx env) members
       >>= pure . inferListType (joinTypes (checkAliases ctx))
 
+-- | Infer a mutually recursive `let` group.
+--
+-- The algorithm proceeds in three phases:
+--
+-- * collect user signatures,
+-- * allocate placeholders so recursive bindings may refer to one another,
+-- * infer each body and constrain it against its placeholder/signature.
+--
+-- This arrangement keeps explicit signatures authoritative while still allowing
+-- recursive inference for unannotated bindings.
 inferLet :: CheckContext -> TypeEnv -> [LetItem] -> InferM (TypeEnv, Map Name Scheme)
 inferLet ctx env items = do
   let sigs = Map.fromList [(name, schemeFromAnnotation ty) | LetSignature name ty <- items]
@@ -161,20 +185,41 @@ inferLet ctx env items = do
   let finals = Map.fromList inferred
   pure (finals <> env, finals)
 
+-- | Instantiate a polymorphic scheme by replacing quantified variables with
+-- fresh inference metas.
 instantiate :: Scheme -> InferM Type
 instantiate (Scheme vars ty) = do
   reps <- traverse (const freshMeta) vars
   pure (substituteTypeVars (Map.fromList (zip vars reps)) ty)
 
+-- | Allocate a fresh inference meta variable.
 freshMeta :: InferM Type
 freshMeta = do
   st <- get
   put st {nextMeta = nextMeta st + 1}
   pure (TMeta (nextMeta st))
 
+-- | Apply the current substitution set to a type.
+--
+-- This is the main "read your work back" operation of the inference engine:
+-- callers use it after unification or binding a meta to recover the most
+-- up-to-date structural view.
 zonk :: Type -> InferM Type
 zonk ty = substituteMetas <$> gets substitutions <*> pure ty
 
+-- | Check that an inferred type satisfies an expected type.
+--
+-- Compared with `unify`, `constrain` is intentionally directional. It is used
+-- for user annotations and function arguments where one side represents an
+-- obligation rather than an unknown peer.
+--
+-- A few policy choices are important here:
+--
+-- * exact subtyping succeeds immediately,
+-- * gradual consistency is only accepted when `dynamic` participates,
+-- * plain concrete mismatches do /not/ fall through to permissive unification,
+-- * sequence types may compare through their structural `List` view when one
+--   side explicitly asks for `List`.
 constrain :: CheckContext -> Type -> Type -> InferM Type
 constrain ctx actual expected = do
   actual' <- normalizeIndexedType <$> zonk actual
@@ -202,6 +247,11 @@ constrain ctx actual expected = do
     _ | hasUnresolvedMetas actual' expected' -> unify ctx actual' expected'
     _ -> lift (Left ("type mismatch: " <> show actual' <> " vs " <> show expected'))
 
+-- | Symmetric structural unification used while solving metas.
+--
+-- Unlike `constrain`, both sides are treated as peers here. When metas are
+-- present the function may bind them, recursively unify structured types, or
+-- join gradually consistent shapes when `dynamic` is involved.
 unify :: CheckContext -> Type -> Type -> InferM Type
 unify ctx left right = do
   left' <- normalizeIndexedType <$> zonk left
@@ -239,6 +289,7 @@ unify ctx left right = do
       | otherwise = lift (Left ("record mismatch: " <> show a <> " vs " <> show b))
     traverseWithKey f = fmap Map.fromList . traverse (\(k, v) -> f k v >>= \ty -> pure (k, ty)) . Map.toList
 
+-- | Bind one inference meta to a solved type, performing the occurs check.
 bindMeta :: Int -> Type -> InferM Type
 bindMeta n ty = do
   resolved <- zonk ty
@@ -246,11 +297,17 @@ bindMeta n ty = do
   modify' (\st -> st {substitutions = Map.insert n resolved (substitutions st)})
   pure resolved
 
+-- | Resolve an import path relative to the current source file.
+--
+-- Absolute paths are normalized but otherwise preserved. Relative paths are
+-- interpreted against the directory containing the current file, mirroring how
+-- Nix imports behave.
 resolvePath :: FilePath -> FilePath -> FilePath
 resolvePath from target
   | isAbsolute target = collapseParentSegments target
   | otherwise = collapseParentSegments (takeDirectory from </> target)
 
+-- | Normalize `.` and `..` path segments without escaping an absolute root.
 collapseParentSegments :: FilePath -> FilePath
 collapseParentSegments = joinPath . foldl step [] . splitDirectories . normalise
   where
@@ -274,11 +331,20 @@ duplicateNames = foldr step [] . group . sort
         first : _ | length xs > 1 -> first : acc
         _ -> acc
 
+-- | Infer a lambda's multiplicity from its body usage count.
+--
+-- A binder used exactly once becomes linear; anything else becomes
+-- unrestricted. This is intentionally local and syntactic.
 inferLambdaMultiplicity :: Name -> Expr -> Multiplicity
 inferLambdaMultiplicity name body
   | usageCount name body == 1 = One
   | otherwise = Many
 
+-- | Count syntactic occurrences of a binder in an expression.
+--
+-- Shadowing stops the walk for the shadowed name, and recursive `let`
+-- definitions are treated conservatively by not counting occurrences through a
+-- re-bound name.
 usageCount :: Name -> Expr -> Int
 usageCount target = go
   where
@@ -319,24 +385,35 @@ multiplicitySubtype actual expected =
       (One, Many) -> True
       _ -> False
 
+-- | Widen a precise tuple/tensor into its structural list view when possible.
+--
+-- This is the bridge that lets exact sequence types interact with explicit
+-- `List` annotations and ambient declarations.
 sequenceListView :: Type -> Maybe Type
 sequenceListView ty =
   case tensorListView ty of
     Just listTy -> Just listTy
     Nothing -> tupleListView ty
 
+-- | Recognize the plain built-in `List a` shape.
 isPlainListType :: Type -> Bool
 isPlainListType ty =
   case collectApps ty of
     (TCon "List", [_]) -> True
     _ -> False
 
+-- | Decide whether a consistency-based escape hatch is allowed.
+--
+-- Gradual consistency exists to smooth interop with genuinely dynamic values,
+-- not to silently blur two unrelated concrete types.
 allowsGradualConsistency :: Type -> Type -> Bool
 allowsGradualConsistency left right = hasDynamic left || hasDynamic right
 
+-- | Check whether either side still contains unsolved metas.
 hasUnresolvedMetas :: Type -> Type -> Bool
 hasUnresolvedMetas left right = not (Set.null (freeMetas left <> freeMetas right))
 
+-- | Detect whether a type tree mentions `dynamic` anywhere inside it.
 hasDynamic :: Type -> Bool
 hasDynamic = \case
   TDynamic -> True

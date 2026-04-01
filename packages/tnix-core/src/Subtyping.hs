@@ -7,6 +7,23 @@
 -- where that policy becomes concrete: `dynamic` participates through
 -- consistency, records use width subtyping, and conditional types are reduced
 -- structurally.
+--
+-- The key design tension in this module is "preserve as much information as we
+-- can, but stay usable for ordinary Nix code". That leads to a few notable
+-- choices:
+--
+-- * `dynamic` participates through consistency rather than ordinary subtyping.
+-- * exact list shapes are preserved through `Vec`/`Matrix`/`Tensor` when the
+--   source proves them,
+-- * structural `List` views are still available when a consumer does not care
+--   about exact shapes,
+-- * numeric refinements such as `Range 0 10 Nat` and unit wrappers such as
+--   `Unit "ms" (...)` are interpreted structurally instead of elaborated into
+--   runtime contracts.
+--
+-- As a result, the relation implemented here is intentionally not a proof
+-- system for dependent types. It is a pragmatic static approximation that keeps
+-- useful facts alive for later phases.
 module Subtyping
   ( isConsistent,
     isSubtype,
@@ -26,6 +43,10 @@ import Type
 --
 -- Most higher-level algorithms call this before comparing types so they see a
 -- normalized structural view instead of the user-written surface form.
+--
+-- The reduction performs a bounded fixed-point walk. That bound prevents alias
+-- cycles or accidentally self-referential conditional types from diverging
+-- forever while still letting ordinary nested aliases expand naturally.
 resolveType :: AliasEnv -> Type -> Type
 resolveType env = go 0 . normalizeIndexedType . expandAliases env . eraseForall
   where
@@ -53,6 +74,11 @@ resolveType env = go 0 . normalizeIndexedType . expandAliases env . eraseForall
 --
 -- Union members are searched left-to-right and the first matching field is
 -- returned. This is intentionally permissive to preserve gradual adoption.
+--
+-- A field lookup on a union only succeeds when every member contributes the
+-- field. When that is true, the resulting field type is joined across members.
+-- When one member omits the field, the entire lookup fails so callers do not
+-- accidentally treat a partial record union as total.
 lookupRecordField :: AliasEnv -> Type -> Name -> Maybe Type
 lookupRecordField env ty field =
   case resolveType env ty of
@@ -70,6 +96,17 @@ lookupRecordField env ty field =
 -- | Compute the least-upper-bound style merge used by the checker.
 --
 -- Where possible this returns an existing supertype; otherwise it constructs a
+-- normalized union.
+--
+-- The merge prefers preserving semantic structure over flattening everything
+-- into `TUnion`. For example:
+--
+-- * matching `Unit` labels join through their payloads,
+-- * tuples join positionally,
+-- * tensors of the same rank join their shapes axis-by-axis,
+-- * numeric families join through `Nat -> Int -> Number`.
+--
+-- Only when no more meaningful merge exists does the function fall back to a
 -- normalized union.
 joinTypes :: AliasEnv -> Type -> Type -> Type
 joinTypes env left right =
@@ -111,6 +148,9 @@ joinTypes env left right =
 --
 -- Consistency is weaker than subtyping: `dynamic` is consistent with anything
 -- even when it is not a subtype of that thing.
+--
+-- The checker uses this relation when it wants to preserve the "gradual"
+-- escape hatch without claiming a precise structural subtype relation exists.
 isConsistent :: AliasEnv -> Type -> Type -> Bool
 isConsistent env left right =
   left' == TDynamic
@@ -126,6 +166,16 @@ isConsistent env left right =
 --
 -- Functions are contravariant in their argument and covariant in their result;
 -- records use width subtyping; literals subtype their primitive constructor.
+--
+-- Beyond those classic rules, tnix also treats a few richer forms
+-- structurally:
+--
+-- * `Range` values subtype their numeric base and enclosed super-ranges,
+-- * `Unit` values subtype same-label unit wrappers and may accept bare numeric
+--   literals at the outer boundary,
+-- * tensors subtype structural lists, and exact empty tensors are considered
+--   compatible with any element type because they carry no contradicting
+--   evidence.
 isSubtype :: AliasEnv -> Type -> Type -> Bool
 isSubtype env left right = go (resolveType env left) (resolveType env right)
   where
@@ -187,6 +237,10 @@ isSubtype env left right = go (resolveType env left) (resolveType env right)
     go (TApp f x) (TApp g y) = go f g && go x y
     go _ _ = False
 
+-- | Multiplicity subtyping for function arrows.
+--
+-- A linear function can be used where an unrestricted function is expected, but
+-- not the other way around.
 multiplicitySubtype :: Multiplicity -> Multiplicity -> Bool
 multiplicitySubtype left right =
   left == right
@@ -194,6 +248,10 @@ multiplicitySubtype left right =
       (One, Many) -> True
       _ -> False
 
+-- | Recover the nicest surface tensor spelling for a joined shape.
+--
+-- This mirrors `surfaceTensorType` in `Indexed`, but lives locally so the
+-- subtyping layer can rebuild user-facing shapes after canonical comparisons.
 surfaceTensor :: [Type] -> Type -> Type
 surfaceTensor dims elemTy =
   case dims of
@@ -201,29 +259,34 @@ surfaceTensor dims elemTy =
     [rowsTy, colsTy] -> TApp (TApp (TApp (TCon "Matrix") rowsTy) colsTy) elemTy
     _ -> TApp (TApp (TCon "Tensor") (TTypeList dims)) elemTy
 
+-- | Structural list view used when exact tuples/tensors meet list consumers.
 listView :: Type -> Maybe Type
 listView ty =
   case tupleListView ty of
     Just listTy -> Just listTy
     Nothing -> tensorListView ty
 
+-- | Pattern-match the encoded `Range` type application.
 rangeView :: Type -> Maybe (Type, Type, Type)
 rangeView ty =
   case collectApps ty of
     (TCon "Range", [lowerTy, upperTy, baseTy]) -> Just (lowerTy, upperTy, baseTy)
     _ -> Nothing
 
+-- | Pattern-match the encoded `Unit` type application.
 unitView :: Type -> Maybe (Type, Type)
 unitView ty =
   case collectApps ty of
     (TCon "Unit", [unitTy, baseTy]) -> Just (unitTy, baseTy)
     _ -> Nothing
 
+-- | Normalized numeric values used while comparing ranges and literals.
 data NumericBound
   = NumericInt Integer
   | NumericFloat Double
   deriving (Eq, Ord, Show)
 
+-- | Check whether a numeric singleton lies within an inclusive range.
 literalWithinRange :: Type -> Type -> Type -> Bool
 literalWithinRange actual lowerTy upperTy =
   case (numericLiteralTypeValue actual, numericBoundValue lowerTy, numericBoundValue upperTy) of
@@ -231,6 +294,7 @@ literalWithinRange actual lowerTy upperTy =
       compareNumericBound actualValue lowerValue /= LT && compareNumericBound actualValue upperValue /= GT
     _ -> False
 
+-- | Check whether one inclusive range is enclosed by another.
 rangeBoundsWithin :: Type -> Type -> Type -> Type -> Bool
 rangeBoundsWithin leftLower leftUpper rightLower rightUpper =
   case (numericBoundValue leftLower, numericBoundValue leftUpper, numericBoundValue rightLower, numericBoundValue rightUpper) of
@@ -238,27 +302,34 @@ rangeBoundsWithin leftLower leftUpper rightLower rightUpper =
       compareNumericBound leftLow rightLow /= LT && compareNumericBound leftHigh rightHigh /= GT
     _ -> False
 
+-- | Recognize integer ranges that stay non-negative and ordered.
+--
+-- This is the predicate that allows integer-based ranges to subtype `Nat`.
 nonNegativeIntegerBounds :: Type -> Type -> Bool
 nonNegativeIntegerBounds lowerTy upperTy =
   case (numericBoundValue lowerTy, numericBoundValue upperTy) of
     (Just (NumericInt low), Just (NumericInt high)) -> low >= 0 && high >= 0 && low <= high
     _ -> False
 
+-- | Recognize numeric singleton types.
 numericLiteralType :: Type -> Bool
 numericLiteralType = maybe False (const True) . numericLiteralTypeValue
 
+-- | Decode a singleton numeric literal into the internal comparison domain.
 numericLiteralTypeValue :: Type -> Maybe NumericBound
 numericLiteralTypeValue = \case
   TLit (LInt n) -> Just (NumericInt n)
   TLit (LFloat n) -> Just (NumericFloat n)
   _ -> Nothing
 
+-- | Decode a bound expression into the internal comparison domain.
 numericBoundValue :: Type -> Maybe NumericBound
 numericBoundValue = \case
   TLit (LInt n) -> Just (NumericInt n)
   TLit (LFloat n) -> Just (NumericFloat n)
   _ -> Nothing
 
+-- | Compare numeric bounds after lifting them into a shared ordered domain.
 compareNumericBound :: NumericBound -> NumericBound -> Ordering
 compareNumericBound left right =
   compare (toDouble left) (toDouble right)
@@ -267,12 +338,17 @@ compareNumericBound left right =
       NumericInt n -> fromInteger n
       NumericFloat n -> n
 
+-- | Recognize numeric singleton literal constructors.
 isNumericLiteral :: LiteralType -> Bool
 isNumericLiteral = \case
   LInt _ -> True
   LFloat _ -> True
   _ -> False
 
+-- | Collapse a type into its broad numeric family when possible.
+--
+-- This is used by numeric joins so that ranges and literals can still produce a
+-- meaningful common supertype.
 numericBaseType :: Type -> Maybe Type
 numericBaseType ty
   | ty == tNat = Just tNat
@@ -285,15 +361,25 @@ numericBaseType ty
   | Just (_, _, baseTy) <- rangeView ty = numericBaseType baseTy
 numericBaseType _ = Nothing
 
+-- | Check whether both inputs are numeric singleton types.
 bothNumericLiterals :: Type -> Type -> Bool
 bothNumericLiterals left right = numericLiteralType left && numericLiteralType right
 
+-- | Join two numeric families when a richer structural join is unavailable.
 joinNumericTypes :: Type -> Type -> Maybe Type
 joinNumericTypes left right = do
   leftBase <- numericBaseType left
   rightBase <- numericBaseType right
   pure (joinNumericBases leftBase rightBase)
 
+-- | Join numeric carrier families with the smallest useful widening.
+--
+-- The widening order is:
+--
+-- @
+-- Nat < Int < Number
+-- Float < Number
+-- @
 joinNumericBases :: Type -> Type -> Type
 joinNumericBases left right
   | left == right = left
@@ -301,20 +387,34 @@ joinNumericBases left right
   | left == tInt, right == tNat = tInt
   | otherwise = tNumber
 
+-- | Check whether a range's carrier family may subtype another numeric family.
+--
+-- This is separate from bound inclusion because `Range 0 10 Nat` can subtype
+-- `Number` even before we compare its exact interval with anything.
 rangeBaseSubtype :: (Type -> Type -> Bool) -> Type -> Type -> Type -> Type -> Bool
 rangeBaseSubtype subtype lowerTy upperTy leftBase rightBase
   | leftBase == rightBase = True
   | rightBase == tNat = (leftBase == tInt || leftBase == tNat) && nonNegativeIntegerBounds lowerTy upperTy
   | otherwise = subtype leftBase rightBase
 
+-- | Recognize string singleton labels suitable for `Unit`.
 unitLabelLiteral :: Type -> Bool
 unitLabelLiteral = \case
   TLit (LString _) -> True
   _ -> False
 
+-- | Detect whether any tensor axis proves the overall tensor must be empty.
+--
+-- When this predicate holds, the element type cannot be observed at runtime, so
+-- subtyping allows any payload type to flow into the empty tensor.
 shapeDefinitelyEmpty :: [Type] -> Bool
 shapeDefinitelyEmpty = any typeDefinitelyZero
 
+-- | Recognize types that describe the exact length zero.
+--
+-- This includes the singleton `0` and exact zero ranges such as
+-- `Range 0 0 Nat`. A union only counts as definitely zero when every member is
+-- definitely zero.
 typeDefinitelyZero :: Type -> Bool
 typeDefinitelyZero = \case
   TLit (LInt 0) -> True
