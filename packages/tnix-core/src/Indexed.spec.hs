@@ -34,13 +34,13 @@ spec = describe "indexed containers" $ do
     inferListType (joinTypes mempty) [TLit (LInt 1), TLit (LString "x")]
       `shouldBe` TApp (TCon "Tuple") (TTypeList [TLit (LInt 1), TLit (LString "x")])
 
-  it "widens ragged nested tensors back to structural lists" $
+  it "preserves ragged nested tensors as vectors with dependent length unions" $
     inferListType
       (joinTypes mempty)
       [ TApp (TApp (TCon "Vec") (TLit (LInt 1))) tInt,
         TApp (TApp (TCon "Vec") (TLit (LInt 2))) tInt
       ]
-      `shouldBe` tList (tList tInt)
+      `shouldBe` tList (TApp (TApp (TCon "Vec") (TUnion [TLit (LInt 1), TLit (LInt 2)])) tInt)
 
   it "treats tensors as nested lists when widened structurally" $
     tensorListView (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3)])) tInt)
@@ -53,6 +53,48 @@ spec = describe "indexed containers" $ do
   it "rejects obviously invalid indices inside aliases and annotations" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Bad = Tensor [\"x\"] Int; let xs :: Vec String Int; xs = [1]; in xs"
     validateProgramIndexedTypes program `shouldSatisfy` isLeft
+
+  it "accepts nat-like unions and bounded lengths in indexed containers" $ do
+    program <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "type Batch t = Vec (2 | 3 | Range 4 8 Nat) t; let xs :: Vec (Range 2 4 Nat) Int; xs = [1 2 3]; in xs"
+    validateProgramIndexedTypes program `shouldBe` Right ()
+
+  it "accepts bounded matrix and tensor dimensions when every axis stays nat-like" $ do
+    program <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "type Grid t = Matrix (Range 1 2 Nat) (2 | 3) t; type Cube t = Tensor [2 (Range 1 2 Nat) 1] t; let grid :: Grid Int; grid = [[1 2] [3 4]]; in grid"
+    validateProgramIndexedTypes program `shouldBe` Right ()
+
+  it "rejects non-nat ranges and malformed unit validators" $ do
+    natRangeProgram <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "let xs :: Vec (Range 0.0 2.0 Nat) Int; xs = [1 2]; in xs"
+    invertedRangeProgram <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "let xs :: Vec (Range 4 2 Nat) Int; xs = [1 2]; in xs"
+    unitProgram <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "type Bad = Unit 1 Int; let timeout :: Unit \"ms\" (Range 0 10 String); timeout = 1; in timeout"
+    unitShapeProgram <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          "let xs :: Tensor [Unit \"ms\" Nat] Int; xs = [[1]]; in xs"
+    validateProgramIndexedTypes natRangeProgram `shouldSatisfy` isLeft
+    validateProgramIndexedTypes invertedRangeProgram `shouldSatisfy` isLeft
+    validateProgramIndexedTypes unitProgram `shouldSatisfy` isLeft
+    validateProgramIndexedTypes unitShapeProgram `shouldSatisfy` isLeft
   where
     isLeft (Left _) = True
     isLeft _ = False

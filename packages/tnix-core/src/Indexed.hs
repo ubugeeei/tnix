@@ -16,11 +16,12 @@ module Indexed
   )
 where
 
-import Data.Maybe (isNothing, mapMaybe)
+import Control.Monad (when)
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Alias (collectApps)
 import Syntax (AmbientDecl (ambientEntries), AmbientEntry (ambientEntryType), AttrItem (..), Expr (..), LetItem (..), Pattern (..), Program (..))
-import Type (LiteralType (..), Name, Type (..), TypeAlias (typeAliasBody), tDynamic, tList)
+import Type (LiteralType (..), Name, Type (..), TypeAlias (typeAliasBody), tDynamic, tFloat, tInt, tList, tNat, tNumber)
 
 inferListType :: (Type -> Type -> Type) -> [Type] -> Type
 inferListType joinElem members =
@@ -160,6 +161,10 @@ validateType label ty =
       case collectApps (TApp fun arg) of
         (TCon "Tuple", [TTypeList items]) ->
           traverse_ (validateType label) items
+        (TCon "Range", [lowerTy, upperTy, baseTy]) ->
+          validateRangeType label lowerTy upperTy baseTy
+        (TCon "Unit", [unitTy, baseTy]) ->
+          validateUnitType label unitTy baseTy
         (TCon "Vec", [lenTy, elemTy]) ->
           validateNatType label "Vec length" lenTy *> validateType label elemTy
         (TCon "Matrix", [rowsTy, colsTy, elemTy]) ->
@@ -183,9 +188,64 @@ validateNatType label site = \case
   TLit (LInt n)
     | n >= 0 -> pure ()
     | otherwise -> Left (renderIndexError label site (TLit (LInt n)))
+  TCon "Nat" -> pure ()
+  TUnion members -> traverse_ (validateNatType label site) members
+  ty
+    | Just (lowerTy, upperTy, baseTy) <- rangeView ty ->
+        validateNatRangeType label site lowerTy upperTy baseTy
   ty
     | isObviouslyInvalidIndex ty -> Left (renderIndexError label site ty)
     | otherwise -> pure ()
+
+validateRangeType :: Text -> Type -> Type -> Type -> Either String ()
+validateRangeType label lowerTy upperTy baseTy = do
+  lower <- validateNumericBoundType label "Range lower bound" lowerTy
+  upper <- validateNumericBoundType label "Range upper bound" upperTy
+  validateNumericCarrierType label "Range base" baseTy
+  validateRangeBounds label lower upper baseTy
+
+validateUnitType :: Text -> Type -> Type -> Either String ()
+validateUnitType label unitTy baseTy = do
+  validateUnitLabelType label unitTy
+  validateType label baseTy
+
+validateNatRangeType :: Text -> Text -> Type -> Type -> Type -> Either String ()
+validateNatRangeType label site lowerTy upperTy baseTy = do
+  lower <- validateNumericBoundType label "nat-like lower bound" lowerTy
+  upper <- validateNumericBoundType label "nat-like upper bound" upperTy
+  case baseTy of
+    ty | ty == tInt || ty == tNat -> pure ()
+    _ -> Left (renderIndexError label site (TApp (TApp (TApp (TCon "Range") lowerTy) upperTy) baseTy))
+  case (lower, upper) of
+    (NumericInt low, NumericInt high)
+      | low < 0 || high < 0 -> Left (renderIndexError label site (TApp (TApp (TApp (TCon "Range") lowerTy) upperTy) baseTy))
+      | low <= high -> pure ()
+      | otherwise -> Left (renderRangeError label "Range bounds are inverted" lowerTy upperTy)
+    _ -> Left (renderIndexError label site (TApp (TApp (TApp (TCon "Range") lowerTy) upperTy) baseTy))
+
+validateNumericBoundType :: Text -> Text -> Type -> Either String NumericBound
+validateNumericBoundType label site = \case
+  TLit (LInt n) -> pure (NumericInt n)
+  TLit (LFloat n) -> pure (NumericFloat n)
+  ty -> Left (renderRangeSiteError label site ty)
+
+validateNumericCarrierType :: Text -> Text -> Type -> Either String ()
+validateNumericCarrierType label site = \case
+  ty
+    | ty == tInt || ty == tFloat || ty == tNumber || ty == tNat -> pure ()
+  other -> Left (renderRangeSiteError label site other)
+
+validateRangeBounds :: Text -> NumericBound -> NumericBound -> Type -> Either String ()
+validateRangeBounds label lower upper baseTy = do
+  when (not (boundsFitBase lower upper baseTy)) $
+    Left (renderRangeError label "Range bounds do not match base type" (boundType lower) (boundType upper))
+  when (compareNumericBound lower upper == GT) $
+    Left (renderRangeError label "Range bounds are inverted" (boundType lower) (boundType upper))
+
+validateUnitLabelType :: Text -> Type -> Either String ()
+validateUnitLabelType label = \case
+  TLit (LString _) -> pure ()
+  other -> Left (renderRangeSiteError label "Unit label" other)
 
 renderIndexError :: Text -> Text -> Type -> String
 renderIndexError label site ty =
@@ -195,34 +255,98 @@ renderIndexError label site ty =
     <> " that is not nat-like: "
     <> show ty
 
+renderRangeSiteError :: Text -> Text -> Type -> String
+renderRangeSiteError label site ty =
+  show label
+    <> " uses "
+    <> show site
+    <> " that is not numeric/unit-like enough: "
+    <> show ty
+
+renderRangeError :: Text -> String -> Type -> Type -> String
+renderRangeError label message leftTy rightTy =
+  show label
+    <> " has invalid numeric validation: "
+    <> message
+    <> " ("
+    <> show leftTy
+    <> ", "
+    <> show rightTy
+    <> ")"
+
 isObviouslyInvalidIndex :: Type -> Bool
 isObviouslyInvalidIndex = \case
   TLit (LString _) -> True
+  TLit (LFloat _) -> True
   TLit (LBool _) -> True
   TTypeList _ -> True
   TFun _ _ _ -> True
   TRecord _ -> True
-  TUnion _ -> True
   TForall _ _ -> True
   TCon name -> isPrimitiveTypeName name
+  ty
+    | Just (TCon "Unit", _) <- pure (collectApps ty) -> True
   _ -> False
 
 isPrimitiveTypeName :: Name -> Bool
-isPrimitiveTypeName name = name `elem` ["Bool", "Int", "List", "Null", "Path", "String"]
+isPrimitiveTypeName name = name `elem` ["Bool", "Float", "Int", "List", "Null", "Number", "Path", "String"]
 
 hasUniformSequenceFamily :: [Type] -> Bool
 hasUniformSequenceFamily members =
-  case mapMaybe sequenceFamily members of
-    [] -> False
-    family : rest -> all (== family) rest
+  case traverse sequenceFamily members of
+    Nothing -> False
+    Just [] -> False
+    Just (family : rest) -> all (== family) rest
 
 sequenceFamily :: Type -> Maybe Name
 sequenceFamily = \case
-  TLit (LInt _) -> Just "Int"
+  TLit (LFloat _) -> Just "Number"
+  TLit (LInt _) -> Just "Number"
   TLit (LString _) -> Just "String"
   TLit (LBool _) -> Just "Bool"
+  TCon "Float" -> Just "Number"
+  TCon "Int" -> Just "Number"
+  TCon "Nat" -> Just "Number"
+  TCon "Number" -> Just "Number"
   TCon name -> Just name
   _ -> Nothing
+
+rangeView :: Type -> Maybe (Type, Type, Type)
+rangeView ty =
+  case collectApps ty of
+    (TCon "Range", [lowerTy, upperTy, baseTy]) -> Just (lowerTy, upperTy, baseTy)
+    _ -> Nothing
+
+data NumericBound
+  = NumericInt Integer
+  | NumericFloat Double
+  deriving (Eq, Ord, Show)
+
+boundType :: NumericBound -> Type
+boundType = \case
+  NumericInt n -> TLit (LInt n)
+  NumericFloat n -> TLit (LFloat n)
+
+boundsFitBase :: NumericBound -> NumericBound -> Type -> Bool
+boundsFitBase lower upper baseTy
+  | baseTy == tInt = all isIntegerBound [lower, upper]
+  | baseTy == tNat = all isIntegerBound [lower, upper]
+  | baseTy == tFloat = True
+  | baseTy == tNumber = True
+  | otherwise = False
+
+isIntegerBound :: NumericBound -> Bool
+isIntegerBound = \case
+  NumericInt _ -> True
+  NumericFloat _ -> False
+
+compareNumericBound :: NumericBound -> NumericBound -> Ordering
+compareNumericBound left right =
+  compare (toDouble left) (toDouble right)
+  where
+    toDouble = \case
+      NumericInt n -> fromInteger n
+      NumericFloat n -> n
 
 joinTupleItems :: Type -> Type -> Type
 joinTupleItems left right
