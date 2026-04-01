@@ -69,6 +69,8 @@ After compilation, type information is erased and only ordinary Nix code remains
 - VS Code, Zed, and Neovim integrations
 - gradual typing with ambient declarations, HKT support, indexed `Vec` / `Matrix` / `Tensor`, and heterogeneous `Tuple`
 - numeric singleton/primitive support via `Float`, `Number`, `Nat`, `Range`, and `Unit`
+- TypeScript-style checker directives via `# @tnix-ignore` and `# @tnix-expected`
+- project bootstrapping via `tnix init`, `tnix scaffold`, and `tnix.config.tnix`
 
 See [CHANGELOG.md](./CHANGELOG.md) for the release history.
 

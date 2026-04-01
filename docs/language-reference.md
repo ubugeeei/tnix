@@ -70,6 +70,16 @@ let
 in value
 ```
 
+`let` items are also where the current diagnostic directives are most useful:
+
+```tnix
+let
+  # @tnix-expected
+  value :: Int;
+  value = "oops";
+in value
+```
+
 ### Attribute Sets
 
 ```tnix
@@ -104,6 +114,33 @@ name :: String;
 f :: Int -> Int;
 (x :: String): x
 ```
+
+## Diagnostic Directives
+
+`tnix` recognizes two line-comment directives modeled after TypeScript.
+
+### `# @tnix-ignore`
+
+Suppress the next root-expression or `let`-item checker failure.
+
+```tnix
+let
+  # @tnix-ignore
+  value = missing;
+in value
+```
+
+### `# @tnix-expected`
+
+Suppress the next failure, but raise an error if that line does not fail.
+
+```tnix
+# @tnix-expected
+missing
+```
+
+This is useful for regression tests and documentation examples where a failure
+is the expected outcome.
 
 ## Type Forms
 

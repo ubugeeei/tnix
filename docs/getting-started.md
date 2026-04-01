@@ -21,6 +21,8 @@ nix develop
 Typical CLI entry points:
 
 ```bash
+tnix init .
+tnix scaffold .
 tnix check ./examples/main.tnix
 tnix compile ./examples/main.tnix -o ./dist/main.nix
 tnix emit ./examples/main.tnix -o ./dist/main.d.tnix
@@ -33,6 +35,34 @@ nix run github:ubugeeei/tnix#tnix -- check ./main.tnix
 nix run github:ubugeeei/tnix#tnix -- compile ./main.tnix -o ./main.nix
 nix run github:ubugeeei/tnix#tnix -- emit ./main.tnix -o ./main.d.tnix
 ```
+
+## Scaffolding A Project
+
+`tnix init` creates a starter project in the target directory:
+
+- `tnix.config.tnix`
+- `src/main.tnix`
+- `types/builtins.d.tnix`
+
+The generated config is ordinary tnix syntax:
+
+```tnix
+{
+  name = "demo";
+  sourceDir = ./src;
+  entry = ./src/main.tnix;
+  declarationDir = ./types;
+  builtins = true;
+}
+```
+
+You can later re-run:
+
+```bash
+tnix scaffold .
+```
+
+to materialize any missing scaffold files without overwriting existing ones.
 
 ## Your First `.tnix` File
 
@@ -163,6 +193,31 @@ in timeoutS
 
 The assignment to `timeoutS` is rejected.
 
+## Diagnostic Directives
+
+`tnix` supports TypeScript-style line comments for intentional checker failures.
+
+Ignore the next line's checker error:
+
+```tnix
+let
+  # @tnix-ignore
+  value = missing;
+in value
+```
+
+Expect the next line to fail and report an error if it does not:
+
+```tnix
+let
+  # @tnix-expected
+  value :: Int;
+  value = "oops";
+in value
+```
+
+Today these directives are aimed at root expressions and `let` items.
+
 ## Declaration Emit
 
 `tnix emit` turns a `.tnix` file into a `.d.tnix` API surface.
@@ -192,7 +247,8 @@ declare "./current-file.nix" {
 1. Start with plain annotations on `let` bindings and function parameters.
 2. Add ambient declarations for existing `.nix` imports.
 3. Use `emit` to stabilize public APIs between files.
-4. Reach for `Vec` / `Matrix` / `Tensor`, `Range`, and `Unit` when the shape or numeric contract actually matters.
+4. Add `tnix.config.tnix` and `tnix scaffold` once the project layout is settling.
+5. Reach for `Vec` / `Matrix` / `Tensor`, `Range`, and `Unit` when the shape or numeric contract actually matters.
 
 ## Next Docs
 
