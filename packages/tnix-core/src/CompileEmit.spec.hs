@@ -82,6 +82,21 @@ spec = describe "compile and emit" $ do
     "mapper =" `Text.isInfixOf` output `shouldBe` True
     "x:" `Text.isInfixOf` output `shouldBe` True
 
+  it "erases as-casts when compiling executable output" $ do
+    output <-
+      compileText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value = { count = 1; }.count as Int;",
+              "in value"
+            ]
+        )
+        >>= expectRight
+    " as " `Text.isInfixOf` output `shouldBe` False
+    "value = {" `Text.isInfixOf` output `shouldBe` True
+    ".count;" `Text.isInfixOf` output `shouldBe` True
+
   it "emits field-wise declarations for attrset roots" $ do
     output <- emitText "main.tnix" "{ name = \"tnix\"; count = 1; }" >>= expectRight
     program <- expectRight (parseDecl "main.d.tnix" output)
@@ -105,6 +120,13 @@ spec = describe "compile and emit" $ do
               "};"
             ]
         )
+
+  it "emits cast-asserted root types while preserving record-shaped exports" $ do
+    scalarOutput <- emitText "main.tnix" "1 as Number" >>= expectRight
+    recordOutput <- emitText "main.tnix" "{ value = 1; } as { value :: Int; }" >>= expectRight
+    Text.isInfixOf "default :: Number;" scalarOutput `shouldBe` True
+    Text.isInfixOf "default ::" recordOutput `shouldBe` False
+    Text.isInfixOf "value :: Int;" recordOutput `shouldBe` True
 
   it "compiles float literals without changing their surface form" $ do
     output <- compileText "main.tnix" "1.5" >>= expectRight

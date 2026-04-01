@@ -338,6 +338,48 @@ spec = describe "analysis" $ do
       )
       >>= (`expectLeftContaining` "type mismatch")
 
+  it "supports widening, narrowing, and gradual as-casts" $ do
+    widenAnalysis <- analyzeText "main.tnix" "1 as Number" >>= expectRight
+    narrowAnalysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  xs :: List Int;",
+              "  xs = [1 2];",
+              "in xs as Vec 2 Int"
+            ]
+        )
+        >>= expectRight
+    unknownAnalysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  value :: unknown;",
+              "  value = 1;",
+              "in value as Int"
+            ]
+        )
+        >>= expectRight
+    dynamicAnalysis <- analyzeText "main.tnix" "import ./opaque.nix as { value :: Int; }" >>= expectRight
+    fmap renderScheme (analysisRoot widenAnalysis) `shouldBe` Just "Number"
+    fmap renderScheme (analysisRoot narrowAnalysis) `shouldBe` Just "Vec 2 Int"
+    fmap renderScheme (analysisRoot unknownAnalysis) `shouldBe` Just "Int"
+    fmap renderScheme (analysisRoot dynamicAnalysis) `shouldBe` Just "{\n  value :: Int;\n}"
+
+  it "rejects unrelated concrete as-casts" $ do
+    analyzeText "main.tnix" "1 as String" >>= (`expectLeftContaining` "invalid cast")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  value = { label = \"x\"; };",
+            "in value as { count :: Int; }"
+          ]
+      )
+      >>= (`expectLeftContaining` "invalid cast")
+
   it "rejects invalid numeric validator declarations and out-of-range shape unions" $ do
     analyzeText
       "main.tnix"

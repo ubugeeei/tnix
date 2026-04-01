@@ -152,6 +152,19 @@ spec = describe "parseProgram" $ do
     programExpr program
       `shouldBe` Just (plain (ESelect (EAttrSet [AttrField "any" (EInt 1)]) ["any"]))
 
+  it "parses as-casts after selections and inside list items" $ do
+    castProgram <- expectRight $ parseProgram "main.tnix" "{ as = 1; }.as as Int as Number"
+    listProgram <- expectRight $ parseProgram "main.tnix" "[value as Int]"
+    programExpr castProgram
+      `shouldBe` Just
+        ( plain
+            ( ECast
+                (ECast (ESelect (EAttrSet [AttrField "as" (EInt 1)]) ["as"]) tInt)
+                tNumber
+            )
+        )
+    programExpr listProgram `shouldBe` Just (plain (EList [ECast (EVar "value") tInt]))
+
   it "attaches tnix diagnostic directives to the next root expression or let item" $ do
     program <-
       expectRight $
