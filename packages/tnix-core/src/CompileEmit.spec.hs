@@ -106,6 +106,14 @@ spec = describe "compile and emit" $ do
             ]
         )
 
+  it "compiles float literals without changing their surface form" $ do
+    output <- compileText "main.tnix" "1.5" >>= expectRight
+    output `shouldBe` "1.5"
+
+  it "emits float literal roots precisely" $ do
+    output <- emitText "main.tnix" "1.5" >>= expectRight
+    Text.isInfixOf "default :: 1.5;" output `shouldBe` True
+
   it "emits default for non-record or quantified roots" $ do
     output <-
       emitText
@@ -201,6 +209,48 @@ spec = describe "compile and emit" $ do
         )
         >>= expectRight
     Text.isInfixOf "default :: Int %1 -> Int;" output `shouldBe` True
+
+  it "emits numeric validation and unit wrappers in declaration output" $ do
+    output <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  timeout :: Unit \"ms\" (Range 0 5000 Nat);",
+              "  timeout = 2500;",
+              "in timeout"
+            ]
+        )
+        >>= expectRight
+    Text.isInfixOf "default :: Unit \"ms\" (Range 0 5000 Nat);" output `shouldBe` True
+
+  it "emits bounded indexed annotations without erasing dependent shape constraints" $ do
+    output <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  grid :: Matrix (Range 1 2 Nat) 2 Int;",
+              "  grid = [[1 2] [3 4]];",
+              "in grid"
+            ]
+        )
+        >>= expectRight
+    Text.isInfixOf "default :: Matrix (Range 1 2 Nat) 2 Int;" output `shouldBe` True
+
+  it "emits float-based numeric validators in declaration output" $ do
+    output <-
+      emitText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  ratio :: Range 0.0 1.0 Float;",
+              "  ratio = 0.5;",
+              "in ratio"
+            ]
+        )
+        >>= expectRight
+    Text.isInfixOf "default :: Range 0.0 1.0 Float;" output `shouldBe` True
 
   it "emits declarations relative to the source basename" $ do
     output <- emitText "nested/app/main.tnix" "{ value = 1; }" >>= expectRight

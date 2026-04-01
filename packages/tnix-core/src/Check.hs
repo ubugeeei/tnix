@@ -198,8 +198,9 @@ constrain ctx actual expected = do
           TFun expectedMult <$> constrain ctx expectedArg actualArg <*> constrain ctx actualResult expectedResult
     _ | actual' == expected' -> pure expected'
     _ | isSubtype (checkAliases ctx) actual' expected' -> pure expected'
-    _ | isConsistent (checkAliases ctx) actual' expected' -> pure expected'
-    _ -> unify ctx actual' expected'
+    _ | allowsGradualConsistency actual' expected' && isConsistent (checkAliases ctx) actual' expected' -> pure expected'
+    _ | hasUnresolvedMetas actual' expected' -> unify ctx actual' expected'
+    _ -> lift (Left ("type mismatch: " <> show actual' <> " vs " <> show expected'))
 
 unify :: CheckContext -> Type -> Type -> InferM Type
 unify ctx left right = do
@@ -227,7 +228,7 @@ unify ctx left right = do
     _ | left' == right' -> pure left'
     _ | isSubtype (checkAliases ctx) left' right' -> pure right'
     _ | isSubtype (checkAliases ctx) right' left' -> pure left'
-    _ | isConsistent (checkAliases ctx) left' right' -> pure (joinTypes (checkAliases ctx) left' right')
+    _ | allowsGradualConsistency left' right' && isConsistent (checkAliases ctx) left' right' -> pure (joinTypes (checkAliases ctx) left' right')
     _ -> lift (Left ("type mismatch: " <> show left' <> " vs " <> show right'))
   where
     unifyRecord a b
@@ -329,3 +330,22 @@ isPlainListType ty =
   case collectApps ty of
     (TCon "List", [_]) -> True
     _ -> False
+
+allowsGradualConsistency :: Type -> Type -> Bool
+allowsGradualConsistency left right = hasDynamic left || hasDynamic right
+
+hasUnresolvedMetas :: Type -> Type -> Bool
+hasUnresolvedMetas left right = not (Set.null (freeMetas left <> freeMetas right))
+
+hasDynamic :: Type -> Bool
+hasDynamic = \case
+  TDynamic -> True
+  TTypeList items -> any hasDynamic items
+  TFun _ left right -> hasDynamic left || hasDynamic right
+  TRecord fields -> any hasDynamic fields
+  TUnion members -> any hasDynamic members
+  TApp fun arg -> hasDynamic fun || hasDynamic arg
+  TForall _ body -> hasDynamic body
+  TConditional actual patternTy yesTy noTy ->
+    any hasDynamic [actual, patternTy, yesTy, noTy]
+  _ -> False

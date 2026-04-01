@@ -18,6 +18,10 @@ spec = describe "analysis" $ do
     analysis <- analyzeText "main.tnix" "1" >>= expectRight
     analysisRoot analysis `shouldBe` Just (Scheme [] (TLit (LInt 1)))
 
+  it "infers float literal roots" $ do
+    analysis <- analyzeText "main.tnix" "1.5" >>= expectRight
+    analysisRoot analysis `shouldBe` Just (Scheme [] (TLit (LFloat 1.5)))
+
   it "preserves declared binding schemes while allowing gradual root inference" $ do
     analysis <-
       analyzeText
@@ -171,6 +175,139 @@ spec = describe "analysis" $ do
               (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 2), TLit (LInt 1)])) tInt)
           )
 
+  it "accepts dependent-ish numeric length constraints for vectors" $ do
+    analysis <-
+      analyzeText "main.tnix" (source ["let xs :: Vec (Range 2 4 Nat) Int;", "    xs = [1 2 3];", "in xs"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Vec (Range 2 4 Nat) Int"
+
+  it "accepts bounded matrix and tensor annotations across multiple axes" $ do
+    matrixAnalysis <-
+      analyzeText
+        "main.tnix"
+        (source ["let grid :: Matrix (Range 1 2 Nat) 2 Int;", "    grid = [[1 2] [3 4]];", "in grid"])
+        >>= expectRight
+    tensorAnalysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let cube :: Tensor [2 (Range 1 2 Nat) 1] Int;",
+              "    cube = [[[1] [2]] [[3] [4]]];",
+              "in cube"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot matrixAnalysis) `shouldBe` Just "Matrix (Range 1 2 Nat) 2 Int"
+    fmap renderScheme (analysisRoot tensorAnalysis) `shouldBe` Just "Tensor [ 2 (Range 1 2 Nat) 1 ] Int"
+
+  it "checks numeric validation and units on annotated bindings" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        (source ["let timeout :: Unit \"ms\" (Range 0 5000 Nat);", "    timeout = 2500;", "in timeout"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Unit \"ms\" (Range 0 5000 Nat)"
+    analyzeText
+      "main.tnix"
+      (source ["let timeout :: Unit \"ms\" (Range 0 5000 Nat);", "    timeout = 9000;", "in timeout"])
+      >>= (`expectLeftContaining` "type mismatch")
+
+  it "accepts inclusive endpoints for int and float validators" $ do
+    timeoutLow <-
+      analyzeText "main.tnix" (source ["let timeout :: Unit \"ms\" (Range 0 5000 Nat);", "    timeout = 0;", "in timeout"])
+        >>= expectRight
+    timeoutHigh <-
+      analyzeText "main.tnix" (source ["let timeout :: Unit \"ms\" (Range 0 5000 Nat);", "    timeout = 5000;", "in timeout"])
+        >>= expectRight
+    ratioLow <-
+      analyzeText "main.tnix" (source ["let ratio :: Range 0.0 1.0 Float;", "    ratio = 0.0;", "in ratio"])
+        >>= expectRight
+    ratioHigh <-
+      analyzeText "main.tnix" (source ["let ratio :: Range 0.0 1.0 Float;", "    ratio = 1.0;", "in ratio"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot timeoutLow) `shouldBe` Just "Unit \"ms\" (Range 0 5000 Nat)"
+    fmap renderScheme (analysisRoot timeoutHigh) `shouldBe` Just "Unit \"ms\" (Range 0 5000 Nat)"
+    fmap renderScheme (analysisRoot ratioLow) `shouldBe` Just "Range 0.0 1.0 Float"
+    fmap renderScheme (analysisRoot ratioHigh) `shouldBe` Just "Range 0.0 1.0 Float"
+
+  it "checks float ranges and unit mismatches through let-bound names" $ do
+    floatAnalysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  ratio :: Range 0.0 1.0 Float;",
+              "  ratio = 0.5;",
+              "in ratio"
+            ]
+        )
+        >>= expectRight
+    fmap renderScheme (analysisRoot floatAnalysis) `shouldBe` Just "Range 0.0 1.0 Float"
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  ratio :: Range 0.0 1.0 Float;",
+            "  ratio = 1.5;",
+            "in ratio"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  timeoutMs :: Unit \"ms\" Nat;",
+            "  timeoutMs = 1;",
+            "  timeoutS :: Unit \"s\" Nat;",
+            "  timeoutS = timeoutMs;",
+            "in timeoutS"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+
+  it "rejects invalid numeric validator declarations and out-of-range shape unions" $ do
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  bad :: Range 2 1 Nat;",
+            "  bad = 1;",
+            "in bad"
+          ]
+      )
+      >>= (`expectLeftContaining` "Range bounds are inverted")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  xs :: Vec (2 | Range 4 8 Nat) Int;",
+            "  xs = [1 2 3];",
+            "in xs"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+    analyzeText
+      "main.tnix"
+      ( source
+          [ "let",
+            "  grid :: Matrix 2 2 Int;",
+            "  grid = [[1 2] [3]];",
+            "in grid"
+          ]
+      )
+      >>= (`expectLeftContaining` "type mismatch")
+
+  it "accepts boundary lengths for bounded vectors" $ do
+    lowAnalysis <-
+      analyzeText "main.tnix" (source ["let xs :: Vec (Range 0 2 Nat) Int;", "    xs = [];", "in xs"])
+        >>= expectRight
+    highAnalysis <-
+      analyzeText "main.tnix" (source ["let xs :: Vec (Range 0 2 Nat) Int;", "    xs = [1 2];", "in xs"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot lowAnalysis) `shouldBe` Just "Vec (Range 0 2 Nat) Int"
+    fmap renderScheme (analysisRoot highAnalysis) `shouldBe` Just "Vec (Range 0 2 Nat) Int"
+
   it "checks tuple annotations against heterogeneous list literals" $ do
     tupleAnalysis <-
       analyzeText "main.tnix" (source ["let pair :: Tuple [Int String];", "    pair = [1 \"x\"];", "in pair"])
@@ -263,6 +400,8 @@ spec = describe "analysis" $ do
 
   it "rejects indexed annotations with invalid dimensions and mismatched shapes" $ do
     analyzeText "main.tnix" "let xs :: Vec \"wide\" Int; xs = [1]; in xs"
+      >>= (`expectLeftContaining` "nat-like")
+    analyzeText "main.tnix" "let xs :: Vec (Unit \"ms\" Nat) Int; xs = [1]; in xs"
       >>= (`expectLeftContaining` "nat-like")
     analyzeText "main.tnix" "let xs :: Vec 2 Int; xs = [1 2 3]; in xs"
       >>= (`expectLeftContaining` "type mismatch")

@@ -116,7 +116,7 @@ prettyType p ty =
             TLit (LInt n) -> pretty n
             TLit (LBool True) -> "true"
             TLit (LBool False) -> "false"
-            TTypeList items -> "[" <+> hsep (prettyType 0 <$> items) <+> "]"
+            TTypeList items -> "[" <+> hsep (prettyType 3 <$> items) <+> "]"
             TDynamic -> "dynamic"
             TFun mult a b ->
               let arrow =
