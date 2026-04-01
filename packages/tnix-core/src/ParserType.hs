@@ -73,6 +73,7 @@ atomParser =
     [ typeListParser,
       recordParser,
       TLit . LString <$> stringLiteral,
+      TLit . LFloat <$> float,
       TLit . LInt <$> integer,
       TLit (LBool True) <$ reserved "true",
       TLit (LBool False) <$ reserved "false",
@@ -101,6 +102,7 @@ shapeItemParser :: Parser Type
 shapeItemParser =
   choice
     [ TLit . LString <$> stringLiteral,
+      TLit . LFloat <$> float,
       TLit . LInt <$> integer,
       TLit (LBool True) <$ reserved "true",
       TLit (LBool False) <$ reserved "false",

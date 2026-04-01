@@ -124,6 +124,7 @@ atomParser =
       attrSetParser,
       listParser,
       EString <$> stringLiteral,
+      EFloat <$> float,
       EInt <$> integer,
       EBool True <$ reserved "true",
       EBool False <$ reserved "false",

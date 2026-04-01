@@ -71,6 +71,7 @@ prettyExpr :: Int -> Expr -> Doc ann
 prettyExpr p = \case
   EVar name -> pretty name
   EString value -> dquotes (pretty value)
+  EFloat value -> pretty (show value)
   EInt value -> pretty value
   EBool True -> "true"
   EBool False -> "false"
@@ -111,6 +112,7 @@ prettyType p ty =
             TCon name -> pretty name
             TMeta n -> pretty ("?" <> show n)
             TLit (LString text) -> dquotes (pretty text)
+            TLit (LFloat n) -> pretty (show n)
             TLit (LInt n) -> pretty n
             TLit (LBool True) -> "true"
             TLit (LBool False) -> "false"

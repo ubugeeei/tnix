@@ -235,6 +235,7 @@ exprAnnotations :: Expr -> [Type]
 exprAnnotations = \case
   EVar _ -> []
   EString _ -> []
+  EFloat _ -> []
   EInt _ -> []
   EBool _ -> []
   ENull -> []
@@ -261,14 +262,19 @@ builtinKinds :: AliasKindEnv
 builtinKinds =
   Map.fromList
     [ ("Bool", KType),
+      ("Float", KType),
       ("Int", KType),
       ("List", KFun KType KType),
       ("Matrix", KFun KType (KFun KType (KFun KType KType))),
+      ("Nat", KType),
       ("Null", KType),
+      ("Number", KType),
       ("Path", KType),
       ("String", KType),
+      ("Range", KFun KType (KFun KType (KFun KType KType))),
       ("Tensor", KFun KType (KFun KType KType)),
       ("Tuple", KFun KType KType),
+      ("Unit", KFun KType (KFun KType KType)),
       ("Vec", KFun KType (KFun KType KType))
     ]
 

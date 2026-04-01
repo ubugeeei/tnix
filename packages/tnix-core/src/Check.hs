@@ -79,6 +79,7 @@ inferExpr :: CheckContext -> TypeEnv -> Expr -> InferM Type
 inferExpr ctx env = \case
   EVar name -> maybe (lift (Left ("unbound name: " <> show name))) instantiate (Map.lookup name env)
   EString text -> pure (TLit (LString text))
+  EFloat n -> pure (TLit (LFloat n))
   EInt n -> pure (TLit (LInt n))
   EBool b -> pure (TLit (LBool b))
   ENull -> pure tNull
@@ -285,6 +286,7 @@ usageCount target = go
         | name == target -> 1
         | otherwise -> 0
       EString _ -> 0
+      EFloat _ -> 0
       EInt _ -> 0
       EBool _ -> 0
       ENull -> 0

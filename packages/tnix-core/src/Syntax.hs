@@ -54,6 +54,7 @@ data AmbientEntry = AmbientEntry
 data Expr
   = EVar Name
   | EString Name
+  | EFloat Double
   | EInt Integer
   | EBool Bool
   | ENull

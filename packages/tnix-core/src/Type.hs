@@ -26,9 +26,12 @@ module Type
     substituteTypeVars,
     tBool,
     tDynamic,
+    tFloat,
     tInt,
     tList,
+    tNat,
     tNull,
+    tNumber,
     tPath,
     tString,
   )
@@ -55,7 +58,7 @@ type Name = Text
 -- rely on. Literal types participate in structural subtyping, joins, and
 -- declaration emission, which lets the checker preserve precise information
 -- until widening becomes necessary.
-data LiteralType = LBool Bool | LInt Integer | LString Text
+data LiteralType = LBool Bool | LFloat Double | LInt Integer | LString Text
   deriving (Eq, Ord, Show)
 
 -- | The lightweight kind language used to validate higher-kinded types.
@@ -125,9 +128,12 @@ data TypeAlias = TypeAlias
   }
   deriving (Eq, Ord, Show)
 
-tString, tInt, tBool, tNull, tPath, tDynamic :: Type
+tString, tInt, tFloat, tNumber, tNat, tBool, tNull, tPath, tDynamic :: Type
 tString = TCon "String"
 tInt = TCon "Int"
+tFloat = TCon "Float"
+tNumber = TCon "Number"
+tNat = TCon "Nat"
 tBool = TCon "Bool"
 tNull = TCon "Null"
 tPath = TCon "Path"

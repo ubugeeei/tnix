@@ -9,6 +9,7 @@ module ParserLexer
   ( Parser,
     brackets,
     braces,
+    float,
     identifier,
     integer,
     lexeme,
@@ -67,6 +68,21 @@ stringLiteral = lexeme $ Text.pack <$> (char '"' *> manyTill L.charLiteral (char
 -- | Parse a decimal integer literal.
 integer :: Parser Integer
 integer = lexeme L.decimal
+
+-- | Parse a decimal float literal with a required fractional part.
+float :: Parser Double
+float = lexeme . try $ do
+  whole <- some digitChar
+  _ <- char '.'
+  frac <- some digitChar
+  expo <- optional exponentPart
+  pure (read (whole <> "." <> frac <> maybe "" id expo))
+  where
+    exponentPart = do
+      marker <- oneOf ("eE" :: String)
+      sign <- optional (oneOf ("+-" :: String))
+      digits <- some digitChar
+      pure (marker : maybe digits (: digits) sign)
 
 -- | Parse a Nix path literal such as `./foo.nix` or `/etc/hosts`.
 pathLiteral :: Parser FilePath

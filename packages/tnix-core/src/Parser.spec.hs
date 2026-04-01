@@ -54,6 +54,17 @@ spec = describe "parseProgram" $ do
             (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3), TLit (LInt 4)])) (TVar "t"))
         ]
 
+  it "parses float literals together with range and unit types" $ do
+    program <- expectRight $ parseProgram "main.tnix" "type Timeout = Unit \"ms\" (Range 0 5000 Nat); 1.5"
+    programAliases program
+      `shouldBe`
+        [ TypeAlias
+            "Timeout"
+            []
+            (TApp (TApp (TCon "Unit") (TLit (LString "ms"))) (TApp (TApp (TApp (TCon "Range") (TLit (LInt 0))) (TLit (LInt 5000))) tNat))
+        ]
+    programExpr program `shouldBe` Just (EFloat 1.5)
+
   it "parses tuple types as type-only heterogeneous sequences" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Pair = Tuple [Int String];"
     programAliases program
