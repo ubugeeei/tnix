@@ -32,6 +32,7 @@
             pkgs.cabal-install
             pkgs.haskell-language-server
             pkgs.fourmolu
+            pkgs.neovim
             pkgs.pkg-config
             pkgs.zlib
             pkgs.nodejs_24
