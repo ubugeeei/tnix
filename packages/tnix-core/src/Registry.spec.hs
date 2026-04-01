@@ -23,7 +23,7 @@ main = hspec spec
 spec :: Spec
 spec = describe "bundled registry" $ do
   it "parses and validates the bundled declaration files" $ do
-    root <- findRepoRoot =<< getCurrentDirectory
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
     forM_ bundledDeclarationFiles $ \relative -> do
       input <- TextIO.readFile (root </> relative)
       program <- expectRight (parseProgram (root </> relative) input)
@@ -32,7 +32,7 @@ spec = describe "bundled registry" $ do
       validateProgramIndexedTypes program `shouldBe` Right ()
 
   it "lets projects reuse bundled workspace declarations" $ do
-    root <- findRepoRoot =<< getCurrentDirectory
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
     registry <- loadRegistry root workspaceRegistryFiles
     withTempTree
       ( registry
@@ -81,7 +81,7 @@ spec = describe "bundled registry" $ do
       )
 
   it "lets projects reuse bundled nixpkgs aliases inside ambient declarations" $ do
-    root <- findRepoRoot =<< getCurrentDirectory
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
     registry <- loadRegistry root ["registry/ecosystem/nixpkgs-lib.d.tnix", "registry/ecosystem/nixpkgs-pkgs.d.tnix"]
     withTempTree
       ( registry
@@ -105,7 +105,7 @@ spec = describe "bundled registry" $ do
       )
 
   it "lets projects reuse bundled flake ecosystem aliases" $ do
-    root <- findRepoRoot =<< getCurrentDirectory
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
     registry <- loadRegistry root registryFiles
     withTempTree
       ( registry
@@ -149,7 +149,7 @@ spec = describe "bundled registry" $ do
       )
 
   it "lets projects reuse bundled community flake aliases" $ do
-    root <- findRepoRoot =<< getCurrentDirectory
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
     registry <- loadRegistry root registryFiles
     withTempTree
       ( registry
@@ -238,17 +238,20 @@ loadRegistry root files =
     content <- TextIO.readFile (root </> relative)
     pure (relative, content)
 
-findRepoRoot :: FilePath -> IO FilePath
-findRepoRoot start = go start
+bundledRegistryMarker :: FilePath
+bundledRegistryMarker = "registry/workspace/builtins.d.tnix"
+
+findBundledRegistryRoot :: FilePath -> IO FilePath
+findBundledRegistryRoot start = go start
   where
     go dir = do
-      marker <- doesFileExist (dir </> "cabal.project")
+      marker <- doesFileExist (dir </> bundledRegistryMarker)
       let parent = takeDirectory dir
       if marker
         then pure dir
         else
           if parent == dir
-            then expectationFailure ("could not find cabal.project above " <> start) >> fail "missing repo root"
+            then expectationFailure ("could not find " <> bundledRegistryMarker <> " above " <> start) >> fail "missing bundled registry"
             else go parent
 
 isRight :: Either a b -> Bool

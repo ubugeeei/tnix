@@ -14,12 +14,18 @@
         };
 
         haskellPackages = pkgs.haskellPackages;
+        tnixCoreSource = pkgs.runCommand "tnix-core-source" { } ''
+          mkdir -p "$out"
+          cp -R ${./packages/tnix-core}/. "$out"/
+          chmod -R u+w "$out"
+          cp -R ${./registry} "$out/registry"
+        '';
         tnixHaskellPackages =
           haskellPackages.extend
             (
               hfinal: _:
                 {
-                  "tnix-core" = hfinal.callCabal2nix "tnix-core" ./packages/tnix-core { };
+                  "tnix-core" = hfinal.callCabal2nix "tnix-core" tnixCoreSource { };
                   "tnix-cli" = hfinal.callCabal2nix "tnix-cli" ./packages/tnix-cli { };
                   "tnix-lsp" = hfinal.callCabal2nix "tnix-lsp" ./packages/tnix-lsp { };
                 }
