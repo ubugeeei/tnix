@@ -251,3 +251,94 @@ declare "./legacy/default.nix" {
   mkPkg :: { name :: String; } -> Derivation;
 };
 ```
+
+## Inference Notes
+
+### Structural Records
+
+```tnix
+{ name = "a"; version = "1"; } :: { name :: String; }
+```
+
+### Gradual Compatibility
+
+```tnix
+dynamic
+```
+
+`dynamic` is consistent with every type, but it is not a concrete subtype of
+every type.
+
+### List Shape Inference
+
+```tnix
+[]
+# => Vec 0 dynamic
+
+[1 "x"]
+# => Tuple [1 "x"]
+```
+
+## Erasure
+
+The following syntax is erased during `.tnix -> .nix` compilation:
+
+- `::` annotations
+- `type` aliases
+- `declare` blocks
+
+The following value-level syntax remains:
+
+- lambdas
+- `let`
+- attrsets
+- lists
+- paths
+- `if`
+- `import`
+
+## Common Patterns
+
+### Typing A Legacy Import
+
+```tnix
+declare "./lib.nix" {
+  default :: { value :: Int; };
+};
+
+(import ./lib.nix).value
+```
+
+### Stable Public API With `emit`
+
+```tnix
+type User = { name :: String; };
+
+{
+  make = name: { inherit name; };
+}
+```
+
+### Bounded Sequence Contracts
+
+```tnix
+let
+  xs :: Vec (Range 2 4 Nat) Int;
+  xs = [1 2 3];
+in xs
+```
+
+### Unit-Safe Numeric Contracts
+
+```tnix
+let
+  timeout :: Unit "ms" (Range 0 5000 Nat);
+  timeout = 2500;
+in timeout
+```
+
+## Related Docs
+
+- [Getting Started](./getting-started.md)
+- [Type System](./type-system.md)
+- [Language Design](./language-design.md)
