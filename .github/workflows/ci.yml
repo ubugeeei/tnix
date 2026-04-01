@@ -45,5 +45,8 @@ jobs:
       - name: Build the monorepo
         run: nix develop --accept-flake-config --command vp run build
 
+      - name: Build flake packages
+        run: nix build .#tnix .#tnix-lsp
+
       - name: Run the full verification suite
         run: nix develop --accept-flake-config --command vp run check
