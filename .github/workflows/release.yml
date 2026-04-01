@@ -109,6 +109,10 @@ jobs:
       - publish-release
     permissions:
       contents: read
+    env:
+      REF_NAME: ${{ github.ref_name }}
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - name: Check out sources
         uses: actions/checkout@v5
@@ -128,17 +132,13 @@ jobs:
           path: ./release-vscode
 
       - name: Publish to VS Code Marketplace
-        if: ${{ secrets.VSCE_PAT != '' }}
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: nix develop --accept-flake-config --command bash -lc 'pnpm --filter tnix exec vsce publish --packagePath ./release-vscode/tnix-vscode-${{ github.ref_name }}.vsix --pat "$VSCE_PAT"'
+        if: ${{ env.VSCE_PAT != '' }}
+        run: nix develop --accept-flake-config --command pnpm --filter tnix exec vsce publish --packagePath "./release-vscode/tnix-vscode-$REF_NAME.vsix" --pat "$VSCE_PAT"
 
       - name: Publish to Open VSX
-        if: ${{ secrets.OVSX_PAT != '' }}
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: nix develop --accept-flake-config --command bash -lc 'pnpm --filter tnix exec ovsx publish ./release-vscode/tnix-vscode-${{ github.ref_name }}.vsix -p "$OVSX_PAT"'
+        if: ${{ env.OVSX_PAT != '' }}
+        run: nix develop --accept-flake-config --command pnpm --filter tnix exec ovsx publish "./release-vscode/tnix-vscode-$REF_NAME.vsix" -p "$OVSX_PAT"
 
       - name: Skip marketplace publish
-        if: ${{ secrets.VSCE_PAT == '' && secrets.OVSX_PAT == '' }}
+        if: ${{ env.VSCE_PAT == '' && env.OVSX_PAT == '' }}
         run: echo "No VSCE_PAT or OVSX_PAT secret configured; skipping marketplace publish."
