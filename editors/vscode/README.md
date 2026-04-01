@@ -19,6 +19,10 @@ GitHub release artifact or via the Nix flake:
 nix profile install github:ubugeeei/tnix#tnix-lsp
 ```
 
+The packaged `.vsix` is attached to each GitHub release. Tagged releases can
+also publish directly to VS Code Marketplace and Open VSX when the repository
+tokens are configured.
+
 ## Settings
 
 - `tnix.server.path`
