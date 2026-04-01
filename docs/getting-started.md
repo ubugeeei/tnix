@@ -41,6 +41,7 @@ nix run github:ubugeeei/tnix#tnix -- emit ./main.tnix -o ./main.d.tnix
 `tnix init` creates a starter project in the target directory:
 
 - `tnix.config.tnix`
+- `tnix.config.d.tnix`
 - `src/main.tnix`
 - `types/builtins.d.tnix`
 
@@ -63,6 +64,9 @@ tnix scaffold .
 ```
 
 to materialize any missing scaffold files without overwriting existing ones.
+
+The generated `tnix.config.d.tnix` lets other typed files import the project
+config with a stable declaration instead of treating it as untyped.
 
 ## Your First `.tnix` File
 

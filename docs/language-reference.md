@@ -311,6 +311,9 @@ declare "./legacy/default.nix" {
 The repository also ships curated `.d.tnix` packs under `registry/`. These
 packs are alias-only and are meant to be reused from local `declare` blocks.
 
+The repository root additionally ships `builtins.d.tnix`, `flake.d.tnix`, and
+`tnix.config.d.tnix` as ready-to-copy declarations for common local files.
+
 Current packs include:
 
 - `NixpkgsLib`, `NixpkgsPkgs`, and related aliases for `nixpkgs`

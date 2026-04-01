@@ -72,6 +72,7 @@ After compilation, type information is erased and only ordinary Nix code remains
 - explicit `expr as Type` casts for widening, narrowing, and gradual-boundary assertions
 - TypeScript-style checker directives via `# @tnix-ignore` and `# @tnix-expected`
 - project bootstrapping via `tnix init`, `tnix scaffold`, and `tnix.config.tnix`
+- shipped declaration files for `builtins`, `flake.nix`, and `tnix.config.tnix`
 - curated ecosystem declaration packs under `registry/` for `nixpkgs`, flake utilities, and popular community flakes
 
 ## Bundled Registry Packs
@@ -93,6 +94,13 @@ declare "./flake-utils.nix" { default :: NixFlakeUtilsFlake; };
 declare "./devenv.nix" { default :: DevenvFlake; };
 declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
 ```
+
+The repository root also ships ready-to-copy declarations for common local
+project files:
+
+- `builtins.d.tnix`
+- `flake.d.tnix`
+- `tnix.config.d.tnix`
 
 See [CHANGELOG.md](./CHANGELOG.md) for the release history.
 
