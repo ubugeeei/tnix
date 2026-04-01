@@ -60,6 +60,47 @@ type Element t = t extends List (infer a) ? a : t;
 type ReturnOf f = f extends (_ -> infer r) ? r : dynamic;
 ```
 
+### 8. Indexed dependent-ish containers
+
+Lists can be preserved more precisely as indexed containers:
+
+```tnix
+Vec 3 Int
+Matrix 2 4 Float
+Tensor [2 3 4] Number
+Vec (2 | 3 | Range 4 8 Nat) Int
+```
+
+Shape indices are type-level values, so the checker can express exact lengths,
+bounded lengths, and unions of admissible lengths without introducing runtime
+evidence.
+
+### 9. Numeric validation
+
+`tnix` supports a small numeric refinement surface:
+
+```tnix
+Nat
+Range 0 100 Int
+Range 0.0 1.0 Float
+```
+
+Numeric literals subtype these validators when they satisfy the corresponding
+constraint. This also feeds back into indexed containers, so `Vec (Range 2 4
+Nat) Int` can be checked directly against list literals of matching length.
+
+### 10. Units
+
+Units are modeled as lightweight phantom wrappers over validated values:
+
+```tnix
+Unit "ms" (Range 0 5000 Nat)
+Unit "MiB" Int
+```
+
+They are erased before runtime, but the checker keeps them distinct so values
+with different units do not subtype each other accidentally.
+
 ## Consistency and Partial Adoption
 
 `tnix` checks both subtyping and consistency.

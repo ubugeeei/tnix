@@ -66,6 +66,7 @@ After compilation, type information is erased and only ordinary Nix code remains
 - `pnpm`-managed editor tooling
 - VS Code, Zed, and Neovim integrations
 - gradual typing with ambient declarations, HKT support, indexed `Vec` / `Matrix` / `Tensor`, and heterogeneous `Tuple`
+- numeric singleton/primitive support via `Float`, `Number`, `Nat`, `Range`, and `Unit`
 
 See [CHANGELOG.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/CHANGELOG.md) for the release history.
 
