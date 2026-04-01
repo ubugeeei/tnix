@@ -1,0 +1,34 @@
+type FlakeInputSpec = {
+  url :: String;
+};
+
+type SystemOutputs a = {
+  x86_64-linux :: a;
+  aarch64-linux :: a;
+  x86_64-darwin :: a;
+  aarch64-darwin :: a;
+};
+
+type DevShellExport = {
+  default :: dynamic;
+};
+
+type FlakeOutputs = {
+  formatter :: SystemOutputs dynamic;
+  devShells :: SystemOutputs DevShellExport;
+};
+
+type ResolvedFlakeInputs = {
+  self :: dynamic;
+  nixpkgs :: dynamic;
+  flake-utils :: dynamic;
+};
+
+declare "./flake.nix" {
+  description :: String;
+  inputs :: {
+    nixpkgs :: FlakeInputSpec;
+    flake-utils :: FlakeInputSpec;
+  };
+  outputs :: ResolvedFlakeInputs -> FlakeOutputs;
+};
