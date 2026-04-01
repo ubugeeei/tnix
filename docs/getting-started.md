@@ -218,6 +218,33 @@ in timeoutS
 
 The assignment to `timeoutS` is rejected.
 
+## Casts
+
+`tnix` also supports explicit `as` casts for the places where you want to
+assert a more useful static view.
+
+```tnix
+let
+  value :: unknown;
+  value = 1;
+in value as Int
+```
+
+This is accepted because the cast is explicit. Widening casts work too:
+
+```tnix
+1 as Number
+```
+
+Concrete unrelated casts are still rejected:
+
+```tnix
+1 as String
+```
+
+At compile time the cast disappears, so the generated `.nix` still contains
+only the original runtime expression.
+
 ## Diagnostic Directives
 
 `tnix` supports TypeScript-style line comments for intentional checker failures.

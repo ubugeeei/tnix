@@ -115,6 +115,21 @@ f :: Int -> Int;
 (x :: String): x
 ```
 
+## Casts
+
+```tnix
+expr as Type
+```
+
+`as` is a value-level cast. It changes the static type of the expression when
+the source and target overlap in one of the ways `tnix` allows:
+
+- normal widening (`1 as Number`)
+- structural narrowing (`value as { name :: String; }`)
+- explicit gradual assertions across `any`, `unknown`, or `dynamic`
+
+Concrete unrelated casts such as `1 as String` are rejected.
+
 ## Diagnostic Directives
 
 `tnix` recognizes two line-comment directives modeled after TypeScript.
@@ -336,6 +351,15 @@ The three gradual escape hatches have different roles:
 - `unknown` is a top type. Every value can be viewed as `unknown`, but `unknown` does not flow back into concrete types without an annotation or narrowing.
 - `dynamic` keeps the existing tnix gradual-consistency behavior. It is consistent with every type, but not a concrete subtype of every type.
 
+`as` is one such explicit narrowing tool. For example:
+
+```tnix
+let
+  value :: unknown;
+  value = 1;
+in value as Int
+```
+
 ### List Shape Inference
 
 ```tnix
@@ -351,6 +375,7 @@ The three gradual escape hatches have different roles:
 The following syntax is erased during `.tnix -> .nix` compilation:
 
 - `::` annotations
+- `as` casts
 - `type` aliases
 - `declare` blocks
 
@@ -374,6 +399,14 @@ declare "./lib.nix" {
 };
 
 (import ./lib.nix).value
+```
+
+### Narrowing A Gradual Boundary
+
+```tnix
+let
+  payload = import ./opaque.nix;
+in payload as { value :: String; }
 ```
 
 ### Stable Public API With `emit`

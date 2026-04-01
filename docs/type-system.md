@@ -21,7 +21,14 @@ type and is meant for the places where users explicitly want TypeScript-like
 `unknown` is a top type. Any value can be treated as `unknown`, but `unknown`
 does not subtype concrete types without an explicit annotation or narrowing.
 
-### 4. Structural subtyping
+### 4. Explicit casts with `as`
+
+`tnix` supports TypeScript-style `expr as Type` assertions. Casts are still
+checked: they succeed for ordinary widening, structural narrowing, and explicit
+crossings of gradual boundaries such as `any`, `unknown`, or `dynamic`.
+Concrete unrelated casts remain errors.
+
+### 5. Structural subtyping
 
 Attribute sets are compared structurally rather than nominally.
 
@@ -31,7 +38,7 @@ Attribute sets are compared structurally rather than nominally.
 
 Function types are contravariant in arguments and covariant in results.
 
-### 5. Union
+### 6. Union
 
 Union types are included to support partial adoption.
 
@@ -39,13 +46,13 @@ Union types are included to support partial adoption.
 String | Int
 ```
 
-### 6. Parametric polymorphism
+### 7. Parametric polymorphism
 
 ```tnix
 id :: forall a. a -> a;
 ```
 
-### 7. Higher-kinded types
+### 8. Higher-kinded types
 
 Type constructor application is treated as a first-class operation in the type language.
 
@@ -55,7 +62,7 @@ type Functor f = {
 };
 ```
 
-### 8. Conditional types
+### 9. Conditional types
 
 The language includes a TypeScript-style `extends ? :` form.
 
@@ -63,7 +70,7 @@ The language includes a TypeScript-style `extends ? :` form.
 type Element t = t extends List (infer a) ? a : t;
 ```
 
-### 9. `infer`
+### 10. `infer`
 
 `infer` introduces pattern variables inside the right-hand side of conditional types.
 
@@ -71,7 +78,7 @@ type Element t = t extends List (infer a) ? a : t;
 type ReturnOf f = f extends (_ -> infer r) ? r : dynamic;
 ```
 
-### 10. Indexed dependent-ish containers
+### 11. Indexed dependent-ish containers
 
 Lists can be preserved more precisely as indexed containers:
 
@@ -109,7 +116,7 @@ in xs
 # => rejected
 ```
 
-### 11. Numeric validation
+### 12. Numeric validation
 
 `tnix` supports a small numeric refinement surface:
 
