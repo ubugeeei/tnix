@@ -18,11 +18,14 @@ let client: LanguageClient | undefined;
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const config = vscode.workspace.getConfiguration("tnix");
-  const runtime = resolveRuntimeConfig(config.get<string>("server.path"));
+  const runtime = resolveRuntimeConfig(
+    config.get<string>("server.path"),
+    vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath),
+  );
   const executable: Executable = {
     command: runtime.command,
     args: runtime.args,
-    options: { env: process.env },
+    options: { cwd: runtime.cwd, env: process.env },
   };
   const serverOptions: ServerOptions = {
     run: executable,
