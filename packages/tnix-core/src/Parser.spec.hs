@@ -54,6 +54,11 @@ spec = describe "parseProgram" $ do
             (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3), TLit (LInt 4)])) (TVar "t"))
         ]
 
+  it "parses tuple types as type-only heterogeneous sequences" $ do
+    program <- expectRight $ parseProgram "main.tnix" "type Pair = Tuple [Int String];"
+    programAliases program
+      `shouldBe` [TypeAlias "Pair" [] (TApp (TCon "Tuple") (TTypeList [tInt, tString]))]
+
   it "parses typed lambda binders" $ do
     program <- expectRight $ parseProgram "main.tnix" "(x :: Int): x"
     programExpr program `shouldBe` Just (ELambda (PVar "x" (Just tInt)) (EVar "x"))

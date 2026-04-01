@@ -48,6 +48,10 @@ spec = describe "analysis" $ do
     analysis <- analyzeText "main.tnix" "[1 2]" >>= expectRight
     fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Vec 2 (1 | 2)"
 
+  it "infers heterogeneous list roots as tuples" $ do
+    analysis <- analyzeText "main.tnix" "[1 \"x\"]" >>= expectRight
+    fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Tuple [ 1 \"x\" ]"
+
   it "infers empty lists as zero-length vectors" $ do
     analysis <- analyzeText "main.tnix" "[]" >>= expectRight
     fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Vec 0 dynamic"
@@ -122,6 +126,12 @@ spec = describe "analysis" $ do
               []
               (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 2), TLit (LInt 1)])) tInt)
           )
+
+  it "checks tuple annotations against heterogeneous list literals" $ do
+    tupleAnalysis <-
+      analyzeText "main.tnix" (source ["let pair :: Tuple [Int String];", "    pair = [1 \"x\"];", "in pair"])
+        >>= expectRight
+    fmap renderScheme (analysisRoot tupleAnalysis) `shouldBe` Just "Tuple [ Int String ]"
 
   it "treats imports without declarations as dynamic for incremental adoption" $ do
     analysis <- analyzeText "main.tnix" "import ./unknown.nix" >>= expectRight

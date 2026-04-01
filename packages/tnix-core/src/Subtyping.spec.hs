@@ -67,6 +67,14 @@ spec = describe "subtyping and type reduction" $ do
     isSubtype mempty matrix22 (tList vec2) `shouldBe` True
     joinTypes mempty vec2 vec3 `shouldBe` tList tInt
 
+  it "treats tuples as fixed heterogeneous lists" $ do
+    let pair = TApp (TCon "Tuple") (TTypeList [tInt, tString])
+        pairLits = TApp (TCon "Tuple") (TTypeList [TLit (LInt 1), TLit (LString "x")])
+    isSubtype mempty pairLits pair `shouldBe` True
+    isSubtype mempty pairLits (tList (TUnion [tInt, tString])) `shouldBe` True
+    joinTypes mempty pairLits pair
+      `shouldBe` TApp (TCon "Tuple") (TTypeList [tInt, tString])
+
   it "joins shared fields across union members and rejects partial records" $ do
     lookupRecordField mempty (TUnion [TRecord (Map.fromList [("value", TLit (LInt 1))]), TRecord (Map.fromList [("value", tString)])]) "value"
       `shouldBe` Just (TUnion [TLit (LInt 1), tString])

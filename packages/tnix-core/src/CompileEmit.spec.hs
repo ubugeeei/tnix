@@ -165,6 +165,16 @@ spec = describe "compile and emit" $ do
             ]
         ]
 
+  it "emits tuple roots for heterogeneous list literals" $ do
+    output <- emitText "main.tnix" "[1 \"x\"]" >>= expectRight
+    program <- expectRight (parseDecl "main.d.tnix" output)
+    programAmbient program
+      `shouldBe`
+        [ AmbientDecl
+            "./main.nix"
+            [AmbientEntry "default" (TApp (TCon "Tuple") (TTypeList [TLit (LInt 1), TLit (LString "x")]))]
+        ]
+
   it "round-trips higher-rank tensor declarations through the emitter" $ do
     output <- emitText "main.tnix" "[[[1] [2]] [[3] [4]]]" >>= expectRight
     program <- expectRight (parseDecl "main.d.tnix" output)

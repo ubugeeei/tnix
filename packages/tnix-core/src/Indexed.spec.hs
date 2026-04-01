@@ -30,6 +30,10 @@ spec = describe "indexed containers" $ do
       ]
       `shouldBe` TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 2))) tInt
 
+  it "infers heterogeneous lists as tuples" $
+    inferListType (joinTypes mempty) [TLit (LInt 1), TLit (LString "x")]
+      `shouldBe` TApp (TCon "Tuple") (TTypeList [TLit (LInt 1), TLit (LString "x")])
+
   it "widens ragged nested tensors back to structural lists" $
     inferListType
       (joinTypes mempty)
@@ -41,6 +45,10 @@ spec = describe "indexed containers" $ do
   it "treats tensors as nested lists when widened structurally" $
     tensorListView (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3)])) tInt)
       `shouldBe` Just (tList (normalizeIndexedType (TApp (TApp (TCon "Vec") (TLit (LInt 3))) tInt)))
+
+  it "widens tuples to structural lists through joined element types" $
+    tupleListView (TApp (TCon "Tuple") (TTypeList [TLit (LInt 1), TLit (LString "x")]))
+      `shouldBe` Just (tList (TUnion [TLit (LInt 1), TLit (LString "x")]))
 
   it "rejects obviously invalid indices inside aliases and annotations" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Bad = Tensor [\"x\"] Int; let xs :: Vec String Int; xs = [1]; in xs"
