@@ -1,0 +1,135 @@
+# Common `pkgs` / `nixpkgs` package-set aliases.
+#
+# These aliases focus on the helpers and derivation-like values that appear in
+# many flake and package definitions.
+
+type NixpkgsDerivation = {
+  derivationType :: "derivation";
+  name :: String;
+  pname :: String | Null;
+  version :: String | Null;
+  drvPath :: String | Path;
+  outPath :: String | Path;
+  meta :: NixpkgsMeta | dynamic;
+  passthru :: dynamic;
+};
+
+type NixpkgsPackage = NixpkgsDerivation;
+type NixpkgsOverlay = dynamic -> dynamic -> dynamic;
+
+type NixpkgsFetchUrlArgs = {
+  url :: String;
+  hash :: String | Null;
+  sha256 :: String | Null;
+  executable :: Bool | Null;
+  name :: String | Null;
+};
+
+type NixpkgsFetchFromGitHubArgs = {
+  owner :: String;
+  repo :: String;
+  rev :: String;
+  hash :: String | Null;
+  sha256 :: String | Null;
+  fetchSubmodules :: Bool | Null;
+};
+
+type NixpkgsFetchFromGitLabArgs = {
+  owner :: String;
+  repo :: String;
+  rev :: String;
+  hash :: String | Null;
+  sha256 :: String | Null;
+  domain :: String | Null;
+  fetchSubmodules :: Bool | Null;
+};
+
+type NixpkgsWriteTextFileArgs = {
+  name :: String;
+  text :: String;
+  executable :: Bool | Null;
+  destination :: String | Null;
+};
+
+type NixpkgsMkDerivationArgs = {
+  pname :: String | Null;
+  name :: String | Null;
+  version :: String | Null;
+  src :: dynamic;
+  buildInputs :: List dynamic | Null;
+  nativeBuildInputs :: List dynamic | Null;
+  propagatedBuildInputs :: List dynamic | Null;
+  checkInputs :: List dynamic | Null;
+  patches :: List dynamic | Null;
+  meta :: NixpkgsMeta | dynamic;
+};
+
+type NixpkgsMkShellArgs = {
+  packages :: List dynamic | Null;
+  buildInputs :: List dynamic | Null;
+  nativeBuildInputs :: List dynamic | Null;
+  inputsFrom :: List dynamic | Null;
+  shellHook :: String | Null;
+};
+
+type NixpkgsImportArgs = {
+  system :: NixpkgsSystem;
+  overlays :: List NixpkgsOverlay | Null;
+  config :: dynamic | Null;
+};
+
+type NixpkgsCallPackage = Path -> dynamic -> dynamic;
+type NixpkgsRunCommand = String -> dynamic -> String -> NixpkgsDerivation;
+
+type NixpkgsSymlinkJoinArgs = {
+  name :: String;
+  paths :: List dynamic;
+};
+
+type NixpkgsHaskellPackageSet = {
+  callCabal2nix :: String -> Path -> dynamic -> NixpkgsDerivation;
+  extend :: (dynamic -> dynamic -> dynamic) -> dynamic;
+};
+
+type NixpkgsStdenv = {
+  mkDerivation :: NixpkgsMkDerivationArgs -> NixpkgsDerivation;
+  hostPlatform :: {
+    system :: NixpkgsSystem;
+    isLinux :: Bool;
+    isDarwin :: Bool;
+  };
+};
+
+type NixpkgsPkgs = {
+  lib :: NixpkgsLib;
+  stdenv :: NixpkgsStdenv;
+  mkShell :: NixpkgsMkShellArgs -> NixpkgsDerivation;
+  writeShellScriptBin :: String -> String -> NixpkgsDerivation;
+  writeText :: String -> String -> Path;
+  writeTextFile :: NixpkgsWriteTextFileArgs -> Path;
+  fetchurl :: NixpkgsFetchUrlArgs -> Path;
+  fetchFromGitHub :: NixpkgsFetchFromGitHubArgs -> Path;
+  fetchFromGitLab :: NixpkgsFetchFromGitLabArgs -> Path;
+  callPackage :: NixpkgsCallPackage;
+  runCommand :: NixpkgsRunCommand;
+  symlinkJoin :: NixpkgsSymlinkJoinArgs -> NixpkgsDerivation;
+  haskellPackages :: NixpkgsHaskellPackageSet;
+  legacyPackages :: dynamic;
+  cabal-install :: NixpkgsPackage;
+  cargo :: NixpkgsPackage;
+  fourmolu :: NixpkgsPackage;
+  git :: NixpkgsPackage;
+  haskell-language-server :: NixpkgsPackage;
+  hello :: NixpkgsPackage;
+  jq :: NixpkgsPackage;
+  neovim :: NixpkgsPackage;
+  nixfmt-rfc-style :: NixpkgsPackage;
+  nodejs_24 :: NixpkgsPackage;
+  pkg-config :: NixpkgsPackage;
+  pnpm :: NixpkgsPackage;
+  rust-analyzer :: NixpkgsPackage;
+  rustc :: NixpkgsPackage;
+  zlib :: NixpkgsPackage;
+};
+
+type NixpkgsImport = NixpkgsImportArgs -> NixpkgsPkgs;
