@@ -31,13 +31,15 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as B8
 import Data.ByteString.Lazy qualified as LBS
-import Data.Char (toLower)
+import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isHexDigit, toLower, toUpper)
 import Data.Foldable (toList)
 import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TextEncoding
 import Driver (Analysis (..), lookupSymbolType)
+import Numeric (showHex)
 import Pretty (renderScheme)
 import System.IO (Handle, hIsEOF)
 
@@ -153,10 +155,10 @@ wordAt lineNo charNo content =
     takeWordStart = T.takeWhile ok
 
 pathUri :: FilePath -> Text
-pathUri file = "file://" <> T.pack file
+pathUri file = "file://" <> percentEncode (T.pack file)
 
 uriPath :: Text -> FilePath
-uriPath text = T.unpack (fromMaybe text (T.stripPrefix "file://" text))
+uriPath text = T.unpack (percentDecode (fromMaybe text (T.stripPrefix "file://" text)))
 
 documentPath :: Maybe Value -> Maybe FilePath
 documentPath params = do
@@ -215,3 +217,28 @@ readHeaders handle = go []
       if BS.null trimmed
         then pure (reverse acc)
         else go (trimmed : acc)
+
+percentEncode :: Text -> Text
+percentEncode =
+  T.concatMap encodeChar
+  where
+    encodeChar char
+      | isUnreserved char || char == '/' = T.singleton char
+      | otherwise = T.concat (map encodeByte (BS.unpack (TextEncoding.encodeUtf8 (T.singleton char))))
+    encodeByte byte =
+      let hex = showHex byte ""
+       in T.pack ['%', toUpper (pad hex !! 0), toUpper (pad hex !! 1)]
+    pad [digit] = ['0', digit]
+    pad digits = digits
+    isUnreserved char = isAsciiLower char || isAsciiUpper char || isDigit char || char `elem` ['-', '.', '_', '~']
+
+percentDecode :: Text -> Text
+percentDecode text =
+  case TextEncoding.decodeUtf8' (BS.pack (decodeBytes (T.unpack text))) of
+    Left _ -> text
+    Right decoded -> decoded
+  where
+    decodeBytes ('%' : a : b : rest)
+      | isHexDigit a && isHexDigit b = fromIntegral (digitToInt a * 16 + digitToInt b) : decodeBytes rest
+    decodeBytes (char : rest) = BS.unpack (TextEncoding.encodeUtf8 (T.singleton char)) <> decodeBytes rest
+    decodeBytes [] = []

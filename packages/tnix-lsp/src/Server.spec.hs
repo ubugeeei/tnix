@@ -38,6 +38,15 @@ spec = do
       let path = "/tmp/project/main.tnix"
       uriPath (pathUri path) `shouldBe` path
 
+  describe "uri encoding" $ do
+    it "percent-encodes spaces and unicode in file uris" $
+      pathUri "/tmp/type space/\x578b.tnix"
+        `shouldBe` "file:///tmp/type%20space/%E5%9E%8B.tnix"
+
+    it "decodes percent-encoded file uris back to filesystem paths" $
+      uriPath "file:///tmp/type%20space/%E5%9E%8B.tnix"
+        `shouldBe` "/tmp/type space/\x578b.tnix"
+
   describe "documentPath" $
     it "extracts the path from textDocument params" $
       documentPath (Just (object ["textDocument" .= object ["uri" .= ("file:///tmp/main.tnix" :: String)]]))
