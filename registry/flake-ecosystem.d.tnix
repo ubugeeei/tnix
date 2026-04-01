@@ -1,0 +1,104 @@
+# Reusable aliases for common flake-oriented projects.
+#
+# The goal is not to model every field of every upstream flake, but to provide
+# stable, high-signal names for the parts most projects import and compose.
+
+type NixFlakeInputSpec = {
+  url :: String;
+  inputs :: dynamic | Null;
+  follows :: String | Null;
+  flake :: Bool | Null;
+};
+
+type NixFlakeApp = {
+  appType :: "app";
+  program :: String | Path;
+};
+
+type NixFlakeTemplate = {
+  path :: Path;
+  description :: String;
+};
+
+type NixFlakeSystemOutputs a = {
+  x86_64-linux :: a;
+  aarch64-linux :: a;
+  x86_64-darwin :: a;
+  aarch64-darwin :: a;
+};
+
+type NixFlakeUtilsLib = {
+  defaultSystems :: List NixpkgsSystem;
+  eachDefaultSystem :: forall a. (NixpkgsSystem -> a) -> NixFlakeSystemOutputs a;
+  eachSystem :: forall a. List NixpkgsSystem -> (NixpkgsSystem -> a) -> NixFlakeSystemOutputs a;
+  eachSystemMap :: forall a. List NixpkgsSystem -> (NixpkgsSystem -> a) -> dynamic;
+  eachDefaultSystemMap :: forall a. (NixpkgsSystem -> a) -> dynamic;
+  flattenTree :: dynamic -> dynamic;
+  filterPackages :: NixpkgsSystem -> dynamic -> dynamic;
+  meld :: dynamic -> List Path -> dynamic;
+  mkApp :: { drv :: NixpkgsDerivation; name :: String | Null; exePath :: String | Null; } -> NixFlakeApp;
+  simpleFlake :: dynamic;
+  system :: {
+    x86_64-linux :: NixpkgsSystem;
+    aarch64-linux :: NixpkgsSystem;
+    x86_64-darwin :: NixpkgsSystem;
+    aarch64-darwin :: NixpkgsSystem;
+  };
+};
+
+type NixFlakeUtilsFlake = {
+  lib :: NixFlakeUtilsLib;
+};
+
+type NixpkgsFlake = {
+  lib :: NixpkgsLib;
+  legacyPackages :: NixFlakeSystemOutputs NixpkgsPkgs;
+  overlays :: dynamic;
+};
+
+type HomeManagerLib = {
+  homeManagerConfiguration :: dynamic -> dynamic;
+};
+
+type HomeManagerFlake = {
+  lib :: HomeManagerLib;
+  nixosModules :: dynamic;
+  darwinModules :: dynamic;
+  flakeModules :: dynamic;
+  templates :: {
+    default :: NixFlakeTemplate;
+    nixos :: NixFlakeTemplate;
+    nix-darwin :: NixFlakeTemplate;
+    standalone :: NixFlakeTemplate;
+  };
+  packages :: NixFlakeSystemOutputs dynamic;
+  devShells :: NixFlakeSystemOutputs { default :: dynamic; };
+  legacyPackages :: NixFlakeSystemOutputs dynamic;
+};
+
+type NixDarwinEvalConfigArgs = {
+  modules :: List dynamic;
+  pkgs :: NixpkgsPkgs | Null;
+  system :: NixpkgsSystem | Null;
+  inputs :: dynamic | Null;
+};
+
+type NixDarwinLib = {
+  evalConfig :: dynamic;
+  darwinSystem :: NixDarwinEvalConfigArgs -> dynamic;
+};
+
+type NixDarwinFlake = {
+  lib :: NixDarwinLib;
+  overlays :: { default :: dynamic; };
+  darwinModules :: dynamic;
+  flakeModules :: { default :: dynamic; };
+  templates :: { default :: NixFlakeTemplate; };
+  packages :: NixFlakeSystemOutputs dynamic;
+  checks :: NixFlakeSystemOutputs dynamic;
+};
+
+type FlakePartsLib = {
+  mkFlake :: dynamic -> dynamic -> dynamic;
+  withSystem :: dynamic;
+};
