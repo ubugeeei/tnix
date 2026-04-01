@@ -149,17 +149,12 @@ schemeFromAnnotation ty = Scheme [] ty
 -- | Remove explicit universal quantifiers from a type tree.
 --
 -- Structural operations such as alias expansion and subtyping compare the body
--- shape rather than the syntactic binder wrapper, so they work on the erased
--- form.
+-- shape rather than a top-level syntactic binder wrapper, but nested
+-- polymorphic fields must stay intact so ambient records can expose generic
+-- members like `builtins.map`.
 eraseForall :: Type -> Type
 eraseForall = \case
   TForall _ body -> eraseForall body
-  TTypeList items -> TTypeList (eraseForall <$> items)
-  TFun mult a b -> TFun mult (eraseForall a) (eraseForall b)
-  TRecord fields -> TRecord (fmap eraseForall fields)
-  TUnion members -> TUnion (eraseForall <$> members)
-  TApp f x -> TApp (eraseForall f) (eraseForall x)
-  TConditional a b c d -> TConditional (eraseForall a) (eraseForall b) (eraseForall c) (eraseForall d)
   other -> other
 
 freeTypeVars :: Type -> Set Name

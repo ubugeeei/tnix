@@ -111,6 +111,9 @@ data World = World
     worldAmbient :: Map FilePath Scheme
   }
 
+builtinsAmbientKey :: FilePath
+builtinsAmbientKey = "builtins"
+
 loadSupport :: FilePath -> IO (Either String World)
 loadSupport path = do
   root <- findSupportRoot path
@@ -169,6 +172,7 @@ findDeclarationFiles dir = do
         else pure [normalise path | ".d.tnix" `isSuffixOf` name]
 
 resolvePath :: FilePath -> FilePath -> FilePath
+resolvePath _ "builtins" = builtinsAmbientKey
 resolvePath from target
   | isAbsolute target = collapseParentSegments target
   | otherwise = collapseParentSegments (takeDirectory from </> target)

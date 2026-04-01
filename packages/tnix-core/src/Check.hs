@@ -62,7 +62,8 @@ checkProgram :: CheckContext -> Program -> Either String CheckResult
 checkProgram ctx program =
   evalStateT (inferTop ctx builtins) (InferState 0 Map.empty)
   where
-    builtins = Map.fromList [("builtins", Scheme [] tDynamic), ("import", Scheme [] (TFun Many tPath tDynamic))]
+    builtinsScheme = Map.findWithDefault (Scheme [] tDynamic) "builtins" (checkAmbient ctx)
+    builtins = Map.fromList [("builtins", builtinsScheme), ("import", Scheme [] (TFun Many tPath tDynamic))]
 
     inferTop local env = case programExpr program of
       Nothing -> pure (CheckResult Nothing Map.empty)
@@ -178,6 +179,13 @@ constrain ctx actual expected = do
   actual' <- normalizeIndexedType <$> zonk actual
   expected' <- normalizeIndexedType <$> zonk expected
   case (actual', expected') of
+    _
+      | Just actualList <- sequenceListView actual',
+        isPlainListType expected' ->
+          constrain ctx actualList expected'
+      | isPlainListType actual',
+        Just expectedList <- sequenceListView expected' ->
+          constrain ctx actual' expectedList
     (TMeta n, TMeta m) | n == m -> pure actual'
     (TMeta n, ty) -> bindMeta n ty
     (ty, TMeta n) -> bindMeta n ty
@@ -197,6 +205,13 @@ unify ctx left right = do
   left' <- normalizeIndexedType <$> zonk left
   right' <- normalizeIndexedType <$> zonk right
   case (left', right') of
+    _
+      | Just leftList <- sequenceListView left',
+        isPlainListType right' ->
+          unify ctx leftList right'
+      | isPlainListType left',
+        Just rightList <- sequenceListView right' ->
+          unify ctx left' rightList
     (TMeta n, TMeta m) | n == m -> pure left'
     (TMeta n, ty) -> bindMeta n ty
     (ty, TMeta n) -> bindMeta n ty
@@ -300,3 +315,15 @@ multiplicitySubtype actual expected =
     || case (actual, expected) of
       (One, Many) -> True
       _ -> False
+
+sequenceListView :: Type -> Maybe Type
+sequenceListView ty =
+  case tensorListView ty of
+    Just listTy -> Just listTy
+    Nothing -> tupleListView ty
+
+isPlainListType :: Type -> Bool
+isPlainListType ty =
+  case collectApps ty of
+    (TCon "List", [_]) -> True
+    _ -> False
