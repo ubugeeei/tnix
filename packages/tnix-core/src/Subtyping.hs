@@ -47,6 +47,19 @@ import Type
 -- The reduction performs a bounded fixed-point walk. That bound prevents alias
 -- cycles or accidentally self-referential conditional types from diverging
 -- forever while still letting ordinary nested aliases expand naturally.
+--
+-- Representative examples:
+--
+-- @
+-- resolveType env (Box Int)
+--   => { value :: Int; }
+--
+-- resolveType env (Matrix 2 3 Int)
+--   => Tensor [2 3] Int
+--
+-- resolveType env (List Int extends List (infer a) ? a : dynamic)
+--   => Int
+-- @
 resolveType :: AliasEnv -> Type -> Type
 resolveType env = go 0 . normalizeIndexedType . expandAliases env . eraseForall
   where
@@ -79,6 +92,16 @@ resolveType env = go 0 . normalizeIndexedType . expandAliases env . eraseForall
 -- field. When that is true, the resulting field type is joined across members.
 -- When one member omits the field, the entire lookup fails so callers do not
 -- accidentally treat a partial record union as total.
+--
+-- Representative examples:
+--
+-- @
+-- lookupRecordField ({ value :: 1; } | { value :: String; }) "value"
+--   => Just (1 | String)
+--
+-- lookupRecordField ({ value :: Int; } | { other :: String; }) "value"
+--   => Nothing
+-- @
 lookupRecordField :: AliasEnv -> Type -> Name -> Maybe Type
 lookupRecordField env ty field =
   case resolveType env ty of
@@ -108,6 +131,19 @@ lookupRecordField env ty field =
 --
 -- Only when no more meaningful merge exists does the function fall back to a
 -- normalized union.
+--
+-- Representative examples:
+--
+-- @
+-- joinTypes Nat Int
+--   => Int
+--
+-- joinTypes (Vec 2 Int) (Vec 3 Int)
+--   => Vec (2 | 3) Int
+--
+-- joinTypes (Unit "ms" (Range 0 10 Nat)) (Unit "ms" Nat)
+--   => Unit "ms" Nat
+-- @
 joinTypes :: AliasEnv -> Type -> Type -> Type
 joinTypes env left right =
   case (unitView left', unitView right') of
@@ -151,6 +187,13 @@ joinTypes env left right =
 --
 -- The checker uses this relation when it wants to preserve the "gradual"
 -- escape hatch without claiming a precise structural subtype relation exists.
+--
+-- Representative examples:
+--
+-- @
+-- isConsistent dynamic String => True
+-- isConsistent String Int     => False
+-- @
 isConsistent :: AliasEnv -> Type -> Type -> Bool
 isConsistent env left right =
   left' == TDynamic
@@ -176,6 +219,16 @@ isConsistent env left right =
 -- * tensors subtype structural lists, and exact empty tensors are considered
 --   compatible with any element type because they carry no contradicting
 --   evidence.
+--
+-- Representative examples:
+--
+-- @
+-- 3 <: Range 0 10 Nat                 => True
+-- Range 2 4 Nat <: Range 0 10 Nat     => True
+-- Unit "ms" Nat <: Unit "s" Nat       => False
+-- Vec 2 Int <: List Int               => True
+-- Vec 0 dynamic <: Vec (Range 0 2 Nat) Int => True
+-- @
 isSubtype :: AliasEnv -> Type -> Type -> Bool
 isSubtype env left right = go (resolveType env left) (resolveType env right)
   where
@@ -252,6 +305,14 @@ multiplicitySubtype left right =
 --
 -- This mirrors `surfaceTensorType` in `Indexed`, but lives locally so the
 -- subtyping layer can rebuild user-facing shapes after canonical comparisons.
+--
+-- Representative examples:
+--
+-- @
+-- surfaceTensor [2] Int       => Vec 2 Int
+-- surfaceTensor [2, 4] Int    => Matrix 2 4 Int
+-- surfaceTensor [2, 3, 4] Int => Tensor [2 3 4] Int
+-- @
 surfaceTensor :: [Type] -> Type -> Type
 surfaceTensor dims elemTy =
   case dims of
@@ -415,6 +476,15 @@ shapeDefinitelyEmpty = any typeDefinitelyZero
 -- This includes the singleton `0` and exact zero ranges such as
 -- `Range 0 0 Nat`. A union only counts as definitely zero when every member is
 -- definitely zero.
+--
+-- Representative examples:
+--
+-- @
+-- typeDefinitelyZero 0                => True
+-- typeDefinitelyZero (Range 0 0 Nat)  => True
+-- typeDefinitelyZero (0 | Range 0 0 Nat) => True
+-- typeDefinitelyZero (0 | 1)          => False
+-- @
 typeDefinitelyZero :: Type -> Bool
 typeDefinitelyZero = \case
   TLit (LInt 0) -> True

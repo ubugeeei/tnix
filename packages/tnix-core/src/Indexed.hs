@@ -67,6 +67,22 @@ import Type (LiteralType (..), Name, Type (..), TypeAlias (typeAliasBody), tDyna
 -- This means the function prefers preserving evidence when it exists, but it
 -- does not pretend a rectangular shape exists when the source only proves a
 -- ragged container.
+--
+-- Representative examples:
+--
+-- @
+-- inferListType join [1, 2]
+--   => Vec 2 (1 | 2)
+--
+-- inferListType join [[1, 2], [3, 4]]
+--   => Matrix 2 2 (1 | 2 | 3 | 4)
+--
+-- inferListType join [[1], [2, 3]]
+--   => List (Vec (1 | 2) (1 | 2 | 3))
+--
+-- inferListType join []
+--   => Vec 0 dynamic
+-- @
 inferListType :: (Type -> Type -> Type) -> [Type] -> Type
 inferListType joinElem members =
   case members of
@@ -94,6 +110,19 @@ inferListType joinElem members =
 -- The normalization is recursive, so shapes embedded in unions, function
 -- arrows, records, or conditional types are also normalized before later
 -- passes inspect them.
+--
+-- Representative examples:
+--
+-- @
+-- normalizeIndexedType (Vec 3 Int)
+--   => Tensor [3] Int
+--
+-- normalizeIndexedType (Matrix 2 4 String)
+--   => Tensor [2 4] String
+--
+-- normalizeIndexedType (List (Vec 2 Int | Vec 3 Int))
+--   => List (Tensor [2] Int | Tensor [3] Int)
+-- @
 normalizeIndexedType :: Type -> Type
 normalizeIndexedType = \case
   TTypeList items -> TTypeList (normalizeIndexedType <$> items)
@@ -122,6 +151,15 @@ normalizeIndexedType = \case
 -- `Matrix` contributes two axes, and `Tensor` returns its shape list as-is.
 -- Callers generally run `normalizeIndexedType` first so that all three surface
 -- spellings behave uniformly.
+--
+-- Representative examples:
+--
+-- @
+-- tensorView (Vec 3 Int)             => Just ([3], Int)
+-- tensorView (Matrix 2 4 String)     => Just ([2, 4], String)
+-- tensorView (Tensor [2 3 1] Number) => Just ([2, 3, 1], Number)
+-- tensorView (Tuple [Int String])    => Nothing
+-- @
 tensorView :: Type -> Maybe ([Type], Type)
 tensorView ty =
   case collectApps ty of
@@ -134,6 +172,13 @@ tensorView ty =
 --
 -- Tuples are encoded as `Tuple [a b c]` rather than as a dedicated AST node.
 -- This helper centralizes that convention for the rest of the checker.
+--
+-- Representative examples:
+--
+-- @
+-- tupleView (Tuple [Int String]) => Just [Int, String]
+-- tupleView (Vec 2 Int)          => Nothing
+-- @
 tupleView :: Type -> Maybe [Type]
 tupleView ty =
   case collectApps ty of
@@ -149,6 +194,7 @@ tupleView ty =
 -- Vec 3 Int              => List Int
 -- Matrix 2 3 Int         => List (Vec 3 Int)
 -- Tensor [2 3 4] Int     => List (Tensor [3 4] Int)
+-- Tensor [2 0 4] Int     => List (Tensor [0 4] Int)
 -- @
 --
 -- This helper is used by structural subtyping and consistency to explain how
@@ -172,6 +218,16 @@ tensorListView ty = do
 -- all element types. The result is therefore a lossier structural view than the
 -- original tuple, but it lets list-oriented relations compare tuples with
 -- `List` consumers.
+--
+-- Representative examples:
+--
+-- @
+-- tupleListView (Tuple [Int String])
+--   => Just (List (Int | String))
+--
+-- tupleListView (Tuple [])
+--   => Just (Vec 0 dynamic)
+-- @
 tupleListView :: Type -> Maybe Type
 tupleListView ty = do
   items <- tupleView (normalizeIndexedType ty)
@@ -193,6 +249,19 @@ tupleListView ty = do
 -- * malformed `Range` declarations,
 -- * malformed `Unit` labels,
 -- * impossible nat-like ranges such as `Range 4 2 Nat`.
+--
+-- Representative examples:
+--
+-- @
+-- type Grid t = Matrix (Range 1 2 Nat) (2 | 3) t;
+--   => accepted
+--
+-- let xs :: Vec (Range 0.0 2.0 Nat) Int;
+--   => rejected
+--
+-- type Delay = Unit 1 Int;
+--   => rejected
+-- @
 validateProgramIndexedTypes :: Program -> Either String ()
 validateProgramIndexedTypes program =
   traverse_ (validateType "type alias" . typeAliasBody) (programAliases program)
@@ -208,6 +277,14 @@ canonicalTensorType dims elemTy = TApp (TApp (TCon "Tensor") (TTypeList dims)) e
 -- One axis becomes `Vec`, two axes become `Matrix`, and any higher-rank shape
 -- stays as `Tensor`. The checker uses this when it wants to preserve user-facing
 -- ergonomics after performing canonical internal work.
+--
+-- Representative examples:
+--
+-- @
+-- surfaceTensorType [3] Int       => Vec 3 Int
+-- surfaceTensorType [2, 4] Int    => Matrix 2 4 Int
+-- surfaceTensorType [2, 3, 4] Int => Tensor [2 3 4] Int
+-- @
 surfaceTensorType :: [Type] -> Type -> Type
 surfaceTensorType dims elemTy =
   case dims of
@@ -224,6 +301,16 @@ tupleType = TApp (TCon "Tuple") . TTypeList
 -- The fold only succeeds when every member proves the same inner shape. When
 -- one member disagrees, the caller must widen to a structural list instead of
 -- pretending a rectangular tensor exists.
+--
+-- Representative examples:
+--
+-- @
+-- foldTensorMembers join [([2], Int), ([2], String)]
+--   => Just ([2], Int | String)
+--
+-- foldTensorMembers join [([1], Int), ([2], Int)]
+--   => Nothing
+-- @
 foldTensorMembers :: (Type -> Type -> Type) -> [([Type], Type)] -> Maybe ([Type], Type)
 foldTensorMembers joinElem = \case
   [] -> Nothing

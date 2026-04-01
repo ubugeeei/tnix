@@ -65,6 +65,19 @@ type TypeEnv = Map Name Scheme
 -- * gradual behavior only kicks in when `dynamic` is genuinely involved,
 -- * unresolved inference variables are closed into stable schemes before
 --   results escape the module.
+--
+-- Representative examples:
+--
+-- @
+-- let id = x: x; in id
+--   => forall a. a -> a
+--
+-- let xs :: Vec (Range 2 4 Nat) Int; xs = [1 2 3]; in xs
+--   => accepted
+--
+-- let xs :: Vec (2 | Range 4 8 Nat) Int; xs = [1 2 3]; in xs
+--   => rejected
+-- @
 checkProgram :: CheckContext -> Program -> Either String CheckResult
 checkProgram ctx program =
   evalStateT (inferTop ctx builtins) (InferState 0 Map.empty)
@@ -89,6 +102,19 @@ checkProgram ctx program =
 -- structure. List literals delegate to `inferListType`, which means exact
 -- vector, matrix, or tensor shapes can be recovered directly from surface list
 -- syntax.
+--
+-- Representative examples:
+--
+-- @
+-- inferExpr [] [1 2]
+--   => Vec 2 (1 | 2)
+--
+-- inferExpr [] [[1 2] [3 4]]
+--   => Matrix 2 2 (1 | 2 | 3 | 4)
+--
+-- inferExpr [] (import ./unknown.nix)
+--   => dynamic
+-- @
 inferExpr :: CheckContext -> TypeEnv -> Expr -> InferM Type
 inferExpr ctx env = \case
   EVar name -> maybe (lift (Left ("unbound name: " <> show name))) instantiate (Map.lookup name env)
@@ -160,6 +186,21 @@ inferExpr ctx env = \case
 --
 -- This arrangement keeps explicit signatures authoritative while still allowing
 -- recursive inference for unannotated bindings.
+--
+-- Representative examples:
+--
+-- @
+-- let
+--   id :: forall a. a -> a;
+--   id = x: x;
+-- in id
+--   => keeps the declared polymorphic scheme for `id`
+--
+-- let
+--   value = value;
+-- in value
+--   => allocates a placeholder first, then constrains recursively
+-- @
 inferLet :: CheckContext -> TypeEnv -> [LetItem] -> InferM (TypeEnv, Map Name Scheme)
 inferLet ctx env items = do
   let sigs = Map.fromList [(name, schemeFromAnnotation ty) | LetSignature name ty <- items]
@@ -220,6 +261,19 @@ zonk ty = substituteMetas <$> gets substitutions <*> pure ty
 -- * plain concrete mismatches do /not/ fall through to permissive unification,
 -- * sequence types may compare through their structural `List` view when one
 --   side explicitly asks for `List`.
+--
+-- Representative examples:
+--
+-- @
+-- constrain (Vec 2 Int) (List Int)
+--   => succeeds through the structural list view
+--
+-- constrain (Vec 3 Int) (Vec (2 | Range 4 8 Nat) Int)
+--   => fails
+--
+-- constrain dynamic String
+--   => succeeds, because the mismatch is genuinely gradual
+-- @
 constrain :: CheckContext -> Type -> Type -> InferM Type
 constrain ctx actual expected = do
   actual' <- normalizeIndexedType <$> zonk actual
@@ -252,6 +306,19 @@ constrain ctx actual expected = do
 -- Unlike `constrain`, both sides are treated as peers here. When metas are
 -- present the function may bind them, recursively unify structured types, or
 -- join gradually consistent shapes when `dynamic` is involved.
+--
+-- Representative examples:
+--
+-- @
+-- unify ?0 Int
+--   => binds ?0 := Int
+--
+-- unify (List ?0) (List String)
+--   => binds ?0 := String
+--
+-- unify Int String
+--   => fails
+-- @
 unify :: CheckContext -> Type -> Type -> InferM Type
 unify ctx left right = do
   left' <- normalizeIndexedType <$> zonk left

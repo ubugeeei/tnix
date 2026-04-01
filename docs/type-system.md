@@ -75,6 +75,29 @@ Shape indices are type-level values, so the checker can express exact lengths,
 bounded lengths, and unions of admissible lengths without introducing runtime
 evidence.
 
+Examples:
+
+```tnix
+[1 2]
+# => Vec 2 (1 | 2)
+
+[[1 2] [3 4]]
+# => Matrix 2 2 (1 | 2 | 3 | 4)
+
+[[1] [2 3]]
+# => List (Vec (1 | 2) (1 | 2 | 3))
+
+let xs :: Vec (Range 2 4 Nat) Int;
+    xs = [1 2 3];
+in xs
+# => accepted
+
+let xs :: Vec (2 | Range 4 8 Nat) Int;
+    xs = [1 2 3];
+in xs
+# => rejected
+```
+
 ### 9. Numeric validation
 
 `tnix` supports a small numeric refinement surface:
@@ -89,6 +112,25 @@ Numeric literals subtype these validators when they satisfy the corresponding
 constraint. This also feeds back into indexed containers, so `Vec (Range 2 4
 Nat) Int` can be checked directly against list literals of matching length.
 
+Examples:
+
+```tnix
+let ratio :: Range 0.0 1.0 Float;
+    ratio = 0.5;
+in ratio
+# => accepted
+
+let ratio :: Range 0.0 1.0 Float;
+    ratio = 1.5;
+in ratio
+# => rejected
+
+let xs :: Vec (Range 0 0 Nat) Int;
+    xs = [];
+in xs
+# => accepted
+```
+
 ### 10. Units
 
 Units are modeled as lightweight phantom wrappers over validated values:
@@ -100,6 +142,22 @@ Unit "MiB" Int
 
 They are erased before runtime, but the checker keeps them distinct so values
 with different units do not subtype each other accidentally.
+
+Examples:
+
+```tnix
+let timeout :: Unit "ms" (Range 0 5000 Nat);
+    timeout = 2500;
+in timeout
+# => accepted
+
+let timeoutMs :: Unit "ms" Nat;
+    timeoutMs = 1;
+    timeoutS :: Unit "s" Nat;
+    timeoutS = timeoutMs;
+in timeoutS
+# => rejected
+```
 
 ## Consistency and Partial Adoption
 
@@ -114,6 +172,8 @@ Examples:
 
 - `String` and `dynamic` are consistent
 - `String` and `Int` are not consistent
+- `Vec 2 Int` and `List Int` can still interact structurally
+- `Unit "ms" Nat` and `Unit "s" Nat` are neither subtypes nor consistent by label alone
 
 ## Inference Strategy
 
@@ -132,6 +192,17 @@ Examples:
 - `declare "./foo.nix" { ... }`
 
 If neither exists, the checker falls back to `dynamic`.
+
+Examples:
+
+```tnix
+declare "./lib.nix" { default :: { value :: Int; }; };
+import ./lib.nix
+# => { value :: Int; }
+
+import ./missing.nix
+# => dynamic
+```
 
 ## Attribute sets
 
