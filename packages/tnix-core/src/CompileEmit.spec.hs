@@ -165,6 +165,19 @@ spec = describe "compile and emit" $ do
             ]
         ]
 
+  it "round-trips higher-rank tensor declarations through the emitter" $ do
+    output <- emitText "main.tnix" "[[[1] [2]] [[3] [4]]]" >>= expectRight
+    program <- expectRight (parseDecl "main.d.tnix" output)
+    programAmbient program
+      `shouldBe`
+        [ AmbientDecl
+            "./main.nix"
+            [ AmbientEntry
+                "default"
+                (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 2), TLit (LInt 1)])) (TUnion [TLit (LInt 1), TLit (LInt 2), TLit (LInt 3), TLit (LInt 4)]))
+            ]
+        ]
+
   it "emits declarations relative to the source basename" $ do
     output <- emitText "nested/app/main.tnix" "{ value = 1; }" >>= expectRight
     Text.isInfixOf "declare \"./main.nix\"" output `shouldBe` True

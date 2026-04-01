@@ -30,6 +30,14 @@ spec = describe "indexed containers" $ do
       ]
       `shouldBe` TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 2))) tInt
 
+  it "widens ragged nested tensors back to structural lists" $
+    inferListType
+      (joinTypes mempty)
+      [ TApp (TApp (TCon "Vec") (TLit (LInt 1))) tInt,
+        TApp (TApp (TCon "Vec") (TLit (LInt 2))) tInt
+      ]
+      `shouldBe` tList (tList tInt)
+
   it "treats tensors as nested lists when widened structurally" $
     tensorListView (TApp (TApp (TCon "Tensor") (TTypeList [TLit (LInt 2), TLit (LInt 3)])) tInt)
       `shouldBe` Just (tList (normalizeIndexedType (TApp (TApp (TCon "Vec") (TLit (LInt 3))) tInt)))

@@ -47,6 +47,13 @@ spec = describe "subtyping and type reduction" $ do
   it "evaluates conditional types by pattern matching with infer" $ do
     let elemOf = TConditional (tList tInt) (TApp (TCon "List") (TInfer "U")) (TVar "U") tDynamic
     resolveType mempty elemOf `shouldBe` tInt
+    let rowsOfMatrix =
+          TConditional
+            (TApp (TApp (TApp (TCon "Matrix") (TLit (LInt 2))) (TLit (LInt 3))) tInt)
+            (TApp (TApp (TCon "Tensor") (TTypeList [TInfer "Rows", TInfer "Cols"])) (TInfer "Elem"))
+            (TVar "Rows")
+            tDynamic
+    resolveType mempty rowsOfMatrix `shouldBe` TLit (LInt 2)
 
   it "joins compatible types and falls back to unions" $ do
     joinTypes mempty (TLit (LString "x")) tString `shouldBe` tString
