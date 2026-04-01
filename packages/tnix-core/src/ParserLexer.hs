@@ -12,6 +12,7 @@ module ParserLexer
     directiveForCurrentLine,
     braces,
     float,
+    fieldName,
     identifier,
     integer,
     lexeme,
@@ -73,6 +74,18 @@ identifier = lexeme $ try $ do
   let name = Text.pack (first : rest)
   when (name `elem` reservedWords) (fail "reserved word")
   pure name
+
+-- | Parse an identifier-shaped field or selector name.
+--
+-- Attribute names in Nix frequently overlap with keywords (`any`, `or`,
+-- `inherit`, ...). Binding positions stay strict through 'identifier', while
+-- record fields and dotted selections use this parser so declaration packs can
+-- mirror real upstream APIs.
+fieldName :: Parser Name
+fieldName = lexeme $ do
+  first <- satisfy identStart
+  rest <- many (satisfy identCont)
+  pure (Text.pack (first : rest))
 
 -- | Parse a double-quoted string literal.
 stringLiteral :: Parser Text

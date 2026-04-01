@@ -147,6 +147,11 @@ spec = describe "parseProgram" $ do
     programExpr program
       `shouldBe` Just (plain (ESelect (EApp (EVar "import") (EPath "/etc/hosts")) ["meta", "value"]))
 
+  it "allows reserved keywords in field and selector positions" $ do
+    program <- expectRight $ parseProgram "main.tnix" "{ any = 1; }.any"
+    programExpr program
+      `shouldBe` Just (plain (ESelect (EAttrSet [AttrField "any" (EInt 1)]) ["any"]))
+
   it "attaches tnix diagnostic directives to the next root expression or let item" $ do
     program <-
       expectRight $

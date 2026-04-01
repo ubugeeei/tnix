@@ -52,7 +52,7 @@ ambientParser = do
 -- | Parse a single ambiently-exported member.
 ambientEntry :: Parser AmbientEntry
 ambientEntry = do
-  name <- identifier
+  name <- fieldName
   _ <- symbol "::"
   ty <- typeParser
   _ <- symbol ";"
@@ -113,7 +113,7 @@ applicationParser = foldl1 EApp <$> some postfixParser
 postfixParser :: Parser Expr
 postfixParser = do
   base <- atomParser
-  fields <- many (try (symbol "." *> identifier))
+  fields <- many (try (symbol "." *> fieldName))
   pure $ if null fields then base else ESelect base fields
 
 -- | Parse atomic expression forms.
@@ -143,7 +143,7 @@ attrParser = try inheritParser <|> fieldParser
   where
     inheritParser = reserved "inherit" *> (AttrInherit <$> some identifier) <* symbol ";"
     fieldParser = do
-      name <- identifier
+      name <- fieldName
       _ <- symbol "="
       expr <- expressionParser
       _ <- symbol ";"
