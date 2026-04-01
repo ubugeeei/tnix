@@ -9,20 +9,22 @@
 module Main (main) where
 
 import Data.Text.IO qualified as Text
-import Cli (Command (..), commandParser, renderAnalysis, writeOutput)
+import Cli qualified
 import Options.Applicative
 import System.Exit (die)
-import Driver (analyzeFile, compileFile, emitFile)
 
 -- | Parse arguments and execute the requested command.
 main :: IO ()
 main = execParser opts >>= run
   where
-    opts = info (commandParser <**> helper) (fullDesc <> progDesc "Compile, check, and emit tnix files")
+    opts = info (Cli.commandParser <**> helper) (fullDesc <> progDesc "Compile, check, and emit tnix files")
 
 -- | Execute one CLI command.
-run :: Command -> IO ()
-run = \case
-  Compile input output -> compileFile input >>= either die (writeOutput output)
-  Check input -> analyzeFile input >>= either die (Text.putStr . renderAnalysis)
-  Emit input output -> emitFile input >>= either die (writeOutput output)
+run :: Cli.Command -> IO ()
+run cmd =
+  Cli.executeCommand cmd >>= \case
+    Left err -> die err
+    Right content ->
+      case Cli.commandOutputPath cmd of
+        Just output -> Cli.writeOutput (Just output) content
+        Nothing -> Text.putStr content

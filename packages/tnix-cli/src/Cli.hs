@@ -4,7 +4,9 @@
 -- | Testable CLI helpers for tnix.
 module Cli
   ( Command (..),
+    commandOutputPath,
     commandParser,
+    executeCommand,
     renderAnalysis,
     writeOutput,
   )
@@ -14,7 +16,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
-import Driver (Analysis (..))
+import Driver (Analysis (..), analyzeFile, compileFile, emitFile)
 import Options.Applicative
 import Pretty (renderScheme)
 import System.Directory (createDirectoryIfMissing)
@@ -41,6 +43,30 @@ commandParser =
     compileP = Compile <$> fileArg <*> outputOpt
     checkP = Check <$> fileArg
     emitP = Emit <$> fileArg <*> outputOpt
+
+-- | Extract the explicit destination path carried by a command, if any.
+--
+-- `check` always prints to stdout, while `compile` and `emit` optionally write
+-- to a file. Keeping this logic in one helper lets the executable stay tiny and
+-- keeps tests focused on command semantics instead of argument plumbing.
+commandOutputPath :: Command -> Maybe FilePath
+commandOutputPath cmd =
+  case cmd of
+    Compile _ output -> output
+    Check _ -> Nothing
+    Emit _ output -> output
+
+-- | Execute one CLI command and return the rendered text payload.
+--
+-- The executable is responsible only for routing this text to stdout or a
+-- file. Returning a plain 'Text' here gives the test suite a stable seam for
+-- end-to-end command coverage without having to spawn a subprocess.
+executeCommand :: Command -> IO (Either String Text)
+executeCommand cmd =
+  case cmd of
+    Compile input _ -> compileFile input
+    Check input -> fmap renderAnalysis <$> analyzeFile input
+    Emit input _ -> emitFile input
 
 -- | Pretty-print the inferred root and bindings for `tnix check`.
 renderAnalysis :: Analysis -> Text
