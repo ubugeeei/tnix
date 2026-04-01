@@ -46,7 +46,9 @@ import Type
 data Analysis = Analysis
   { analysisProgram :: Program,
     analysisRoot :: Maybe Scheme,
-    analysisBindings :: Map Name Scheme
+    analysisBindings :: Map Name Scheme,
+    analysisAliases :: AliasEnv,
+    analysisAmbient :: Map FilePath Scheme
   }
   deriving (Eq, Show)
 
@@ -68,7 +70,14 @@ analyzeText path input = do
         ambient = localAmbient <> worldAmbient supportWorld
         context = CheckContext {checkAliases = aliases, checkAmbient = ambient, checkFile = path}
     result <- checkProgram context program
-    pure Analysis {analysisProgram = program, analysisRoot = resultRoot result, analysisBindings = resultBindings result}
+    pure
+      Analysis
+        { analysisProgram = program,
+          analysisRoot = resultRoot result,
+          analysisBindings = resultBindings result,
+          analysisAliases = aliases,
+          analysisAmbient = ambient
+        }
 
 -- | Read and analyze a file from disk.
 analyzeFile :: FilePath -> IO (Either String Analysis)

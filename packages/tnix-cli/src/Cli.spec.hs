@@ -45,7 +45,9 @@ spec = do
             Analysis
               { analysisProgram = error "unused in cli tests",
                 analysisRoot = Just (Scheme [] tInt),
-                analysisBindings = Map.fromList [("box", Scheme [] tString), ("id", Scheme ["a"] (TFun Many (TVar "a") (TVar "a")))]
+                analysisBindings = Map.fromList [("box", Scheme [] tString), ("id", Scheme ["a"] (TFun Many (TVar "a") (TVar "a")))],
+                analysisAliases = mempty,
+                analysisAmbient = mempty
               }
       renderAnalysis analysis
         `shouldBe` Text.unlines ["root: Int", "box :: String", "id :: forall a. a -> a"]
