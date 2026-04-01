@@ -19,6 +19,11 @@ main = hspec spec
 
 spec :: Spec
 spec = do
+  describe "clientCapabilities" $
+    it "advertises incremental sync with open/close support" $
+      clientCapabilities
+        `shouldBe` object ["capabilities" .= object ["hoverProvider" .= True, "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]]]
+
   describe "contentLengthFromHeaders" $ do
     it "finds content length regardless of header order or casing" $
       contentLengthFromHeaders ["Content-Type: application/vscode-jsonrpc; charset=utf-8", "content-length: 42"]
@@ -37,6 +42,59 @@ spec = do
     it "extracts the path from textDocument params" $
       documentPath (Just (object ["textDocument" .= object ["uri" .= ("file:///tmp/main.tnix" :: String)]]))
         `shouldBe` Just "/tmp/main.tnix"
+
+  describe "applyContentChanges" $ do
+    it "replaces the whole document when a change omits range information" $
+      applyContentChanges "before" (Just (object ["contentChanges" .= [object ["text" .= ("after" :: String)]]]))
+        `shouldBe` Right "after"
+
+    it "applies incremental edits in order" $
+      applyContentChanges
+        "let value = 1;\n"
+        ( Just
+            ( object
+                [ "contentChanges"
+                    .= [ object
+                           [ "range"
+                               .= object
+                                 [ "start" .= object ["line" .= (0 :: Int), "character" .= (4 :: Int)],
+                                   "end" .= object ["line" .= (0 :: Int), "character" .= (9 :: Int)]
+                                 ],
+                             "text" .= ("result" :: String)
+                           ],
+                         object
+                           [ "range"
+                               .= object
+                                 [ "start" .= object ["line" .= (0 :: Int), "character" .= (13 :: Int)],
+                                   "end" .= object ["line" .= (0 :: Int), "character" .= (14 :: Int)]
+                                 ],
+                             "text" .= ("2" :: String)
+                           ]
+                       ]
+                ]
+            )
+        )
+        `shouldBe` Right "let result = 2;\n"
+
+    it "rejects invalid incremental ranges" $
+      applyContentChanges
+        "x"
+        ( Just
+            ( object
+                [ "contentChanges"
+                    .= [ object
+                           [ "range"
+                               .= object
+                                 [ "start" .= object ["line" .= (0 :: Int), "character" .= (2 :: Int)],
+                                   "end" .= object ["line" .= (0 :: Int), "character" .= (3 :: Int)]
+                                 ],
+                             "text" .= ("y" :: String)
+                           ]
+                       ]
+                ]
+            )
+        )
+        `shouldBe` Left "content change character is out of bounds"
 
   describe "wordAt" $
     it "extracts identifiers around the cursor including punctuation used by nix names" $ do

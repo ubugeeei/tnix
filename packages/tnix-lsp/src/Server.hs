@@ -2,10 +2,13 @@
 
 -- | Testable JSON-RPC/LSP helpers for tnix.
 module Server
-  ( asInt,
+  ( applyContentChanges,
+    asInt,
     asText,
     clearDiagnostics,
+    clientCapabilities,
     contentLengthFromHeaders,
+    contentChanges,
     diag,
     documentPath,
     field,
@@ -50,10 +53,61 @@ asInt :: Value -> Int
 asInt (Number n) = floor n
 asInt _ = 0
 
+clientCapabilities :: Value
+clientCapabilities =
+  object
+    [ "capabilities"
+        .= object
+          [ "hoverProvider" .= True,
+            "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]
+          ]
+    ]
+
 firstChange :: Maybe Value -> Maybe Value
 firstChange params = do
   Array changes <- field "contentChanges" =<< params
   listToMaybe (toList changes)
+
+contentChanges :: Maybe Value -> [Value]
+contentChanges params =
+  case field "contentChanges" =<< params of
+    Just (Array changes) -> toList changes
+    _ -> []
+
+applyContentChanges :: Text -> Maybe Value -> Either String Text
+applyContentChanges initial params =
+  foldl' (\acc change -> acc >>= (`applyContentChange` change)) (Right initial) (contentChanges params)
+
+applyContentChange :: Text -> Value -> Either String Text
+applyContentChange content change = do
+  replacement <- maybe (Left "content change is missing text") Right (field "text" change >>= asText)
+  case field "range" change of
+    Nothing -> Right replacement
+    Just range -> do
+      start <- rangePos "start" range >>= positionOffset content
+      end <- rangePos "end" range >>= positionOffset content
+      if start > end
+        then Left "content change range is inverted"
+        else Right (T.take start content <> replacement <> T.drop end content)
+  where
+    rangePos :: Text -> Value -> Either String (Int, Int)
+    rangePos key range = do
+      pos <- maybe (Left ("content change range is missing " <> T.unpack key)) Right (field key range)
+      lineNo <- maybe (Left ("content change range is missing " <> T.unpack key <> ".line")) Right (field "line" pos)
+      charNo <- maybe (Left ("content change range is missing " <> T.unpack key <> ".character")) Right (field "character" pos)
+      Right (asInt lineNo, asInt charNo)
+
+positionOffset :: Text -> (Int, Int) -> Either String Int
+positionOffset content (lineNo, charNo) =
+  go 0 lineNo (T.splitOn "\n" content)
+  where
+    go offset 0 (line : _) =
+      if charNo <= T.length line
+        then Right (offset + charNo)
+        else Left "content change character is out of bounds"
+    go offset n (line : rest) =
+      go (offset + T.length line + 1) (n - 1) rest
+    go _ _ [] = Left "content change line is out of bounds"
 
 diag :: String -> Value
 diag err = object ["range" .= object ["start" .= pos, "end" .= pos], "severity" .= (1 :: Int), "message" .= err]
