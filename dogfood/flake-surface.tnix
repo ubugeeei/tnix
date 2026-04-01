@@ -1,0 +1,18 @@
+let
+  flake = import ../flake.nix;
+
+  inputs :: ResolvedFlakeInputs;
+  inputs = {
+    self = builtins;
+    nixpkgs = builtins;
+    flake-utils = builtins;
+  };
+
+  outputs :: FlakeOutputs;
+  outputs = flake.outputs inputs;
+in {
+  description = flake.description;
+  nixpkgsUrl = flake.inputs.nixpkgs.url;
+  formatter = outputs.formatter.aarch64-darwin;
+  devShell = outputs.devShells.aarch64-darwin.default;
+}
