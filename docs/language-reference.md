@@ -155,7 +155,9 @@ Nat
 Bool
 Path
 Null
+any
 dynamic
+unknown
 ```
 
 ### Literal Singleton Types
@@ -323,11 +325,16 @@ The checker resolves those aliases exactly like aliases written in your own
 ### Gradual Compatibility
 
 ```tnix
+any
+unknown
 dynamic
 ```
 
-`dynamic` is consistent with every type, but it is not a concrete subtype of
-every type.
+The three gradual escape hatches have different roles:
+
+- `any` is assignable to and from every type.
+- `unknown` is a top type. Every value can be viewed as `unknown`, but `unknown` does not flow back into concrete types without an annotation or narrowing.
+- `dynamic` keeps the existing tnix gradual-consistency behavior. It is consistent with every type, but not a concrete subtype of every type.
 
 ### List Shape Inference
 

@@ -15,7 +15,7 @@
   - higher-kinded types
   - conditional types
   - `infer`-style type decomposition
-- Use structural subtyping and `dynamic` as the core gradual typing tools
+- Use structural subtyping and `dynamic`, `unknown`, and `any` as the core gradual typing tools
 
 ## File Kinds
 

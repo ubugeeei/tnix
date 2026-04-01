@@ -10,7 +10,18 @@ The `tnix` type system is a blend of Haskell and TypeScript. Its inference style
 
 Untyped code and external boundaries are represented as `dynamic`. It is close to `unknown`, but not a full top type. It receives special treatment in consistency checking rather than replacing the subtype lattice.
 
-### 2. Structural subtyping
+### 2. `any`
+
+`any` is the fully unsound escape hatch. It is assignable to and from every
+type and is meant for the places where users explicitly want TypeScript-like
+"just let this through" behavior.
+
+### 3. `unknown`
+
+`unknown` is a top type. Any value can be treated as `unknown`, but `unknown`
+does not subtype concrete types without an explicit annotation or narrowing.
+
+### 4. Structural subtyping
 
 Attribute sets are compared structurally rather than nominally.
 
@@ -20,7 +31,7 @@ Attribute sets are compared structurally rather than nominally.
 
 Function types are contravariant in arguments and covariant in results.
 
-### 3. Union
+### 5. Union
 
 Union types are included to support partial adoption.
 
@@ -28,13 +39,13 @@ Union types are included to support partial adoption.
 String | Int
 ```
 
-### 4. Parametric polymorphism
+### 6. Parametric polymorphism
 
 ```tnix
 id :: forall a. a -> a;
 ```
 
-### 5. Higher-kinded types
+### 7. Higher-kinded types
 
 Type constructor application is treated as a first-class operation in the type language.
 
@@ -44,7 +55,7 @@ type Functor f = {
 };
 ```
 
-### 6. Conditional types
+### 8. Conditional types
 
 The language includes a TypeScript-style `extends ? :` form.
 
@@ -52,7 +63,7 @@ The language includes a TypeScript-style `extends ? :` form.
 type Element t = t extends List (infer a) ? a : t;
 ```
 
-### 7. `infer`
+### 9. `infer`
 
 `infer` introduces pattern variables inside the right-hand side of conditional types.
 
@@ -60,7 +71,7 @@ type Element t = t extends List (infer a) ? a : t;
 type ReturnOf f = f extends (_ -> infer r) ? r : dynamic;
 ```
 
-### 8. Indexed dependent-ish containers
+### 10. Indexed dependent-ish containers
 
 Lists can be preserved more precisely as indexed containers:
 
@@ -98,7 +109,7 @@ in xs
 # => rejected
 ```
 
-### 9. Numeric validation
+### 11. Numeric validation
 
 `tnix` supports a small numeric refinement surface:
 
@@ -131,7 +142,7 @@ in xs
 # => accepted
 ```
 
-### 10. Units
+### 12. Units
 
 Units are modeled as lightweight phantom wrappers over validated values:
 
@@ -171,6 +182,8 @@ in timeoutS
 Examples:
 
 - `String` and `dynamic` are consistent
+- `String` is a subtype of `unknown`
+- `any` is both a subtype of and a supertype of `String`
 - `String` and `Int` are not consistent
 - `Vec 2 Int` and `List Int` can still interact structurally
 - `Unit "ms" Nat` and `Unit "s" Nat` are neither subtypes nor consistent by label alone
