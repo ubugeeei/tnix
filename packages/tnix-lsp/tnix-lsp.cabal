@@ -1,6 +1,6 @@
 cabal-version:      3.8
 name:               tnix-lsp
-version:            0.1.0.0
+version:            0.2.0.0
 build-type:         Simple
 license:            MIT
 license-file:       LICENSE
