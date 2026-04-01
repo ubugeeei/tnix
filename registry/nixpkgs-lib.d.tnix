@@ -1,0 +1,136 @@
+# Common `nixpkgs.lib` surface aliases.
+#
+# This file is intentionally alias-only so projects can reuse the names from
+# their own `declare "./some-file.nix"` blocks without having to match one
+# exact upstream path layout.
+
+type NixpkgsSystem =
+  "aarch64-linux"
+  | "aarch64-darwin"
+  | "x86_64-linux"
+  | "x86_64-darwin";
+
+type NixpkgsLicense = {
+  shortName :: String;
+  fullName :: String | Null;
+  free :: Bool | Null;
+  redistributable :: Bool | Null;
+};
+
+type NixpkgsMaintainer = {
+  name :: String | Null;
+  email :: String | Null;
+  github :: String | Null;
+  githubId :: Int | Null;
+};
+
+type NixpkgsMeta = {
+  description :: String | Null;
+  homepage :: String | List String | Null;
+  license :: NixpkgsLicense | List NixpkgsLicense | dynamic;
+  maintainers :: List NixpkgsMaintainer | dynamic;
+  platforms :: List NixpkgsSystem | dynamic;
+  broken :: Bool | Null;
+};
+
+type NixpkgsNameValuePair a = {
+  name :: String;
+  value :: a;
+};
+
+type NixpkgsPredicate a = a -> Bool;
+type NixpkgsMapper a b = a -> b;
+type NixpkgsNamedMapper a b = String -> a -> b;
+type NixpkgsFolder a b = a -> b -> a;
+
+type NixpkgsListsLib = {
+  map :: forall a b. NixpkgsMapper a b -> List a -> List b;
+  filter :: forall a. NixpkgsPredicate a -> List a -> List a;
+  foldl' :: forall a b. NixpkgsFolder a b -> a -> List b -> a;
+  any :: forall a. NixpkgsPredicate a -> List a -> Bool;
+  all :: forall a. NixpkgsPredicate a -> List a -> Bool;
+  concatMap :: forall a b. NixpkgsMapper a (List b) -> List a -> List b;
+  flatten :: dynamic -> List dynamic;
+  length :: forall a. List a -> Int;
+  head :: forall a. List a -> a;
+  tail :: forall a. List a -> List a;
+  singleton :: forall a. a -> List a;
+  optional :: forall a. Bool -> a -> List a;
+  optionals :: forall a. Bool -> List a -> List a;
+  findFirst :: forall a. NixpkgsPredicate a -> a -> List a -> a;
+  findFirstIndex :: forall a b. NixpkgsPredicate a -> b -> List a -> Int | b;
+  unique :: forall a. List a -> List a;
+  genList :: forall a. (Int -> a) -> Int -> List a;
+};
+
+type NixpkgsStringsLib = {
+  concatStringsSep :: String -> List String -> String;
+  hasPrefix :: String -> String -> Bool;
+  hasSuffix :: String -> String -> Bool;
+  removePrefix :: String -> String -> String;
+  removeSuffix :: String -> String -> String;
+  splitString :: String -> String -> List String;
+  optionalString :: Bool -> String -> String;
+  stringLength :: String -> Int;
+};
+
+type NixpkgsAttrsetsLib = {
+  attrNames :: dynamic -> List String;
+  attrValues :: dynamic -> List dynamic;
+  genAttrs :: List String -> (String -> dynamic) -> dynamic;
+  mapAttrs :: forall a b. NixpkgsNamedMapper a b -> dynamic -> dynamic;
+  mapAttrs' :: forall a b. NixpkgsNamedMapper a (NixpkgsNameValuePair b) -> dynamic -> dynamic;
+  optionalAttrs :: Bool -> dynamic -> dynamic;
+  recursiveUpdate :: dynamic -> dynamic -> dynamic;
+  nameValuePair :: forall a. String -> a -> NixpkgsNameValuePair a;
+};
+
+type NixpkgsTrivialLib = {
+  id :: forall a. a -> a;
+  const :: forall a b. a -> b -> a;
+  flip :: dynamic;
+  pipe :: dynamic -> List dynamic -> dynamic;
+  warn :: String -> dynamic -> dynamic;
+};
+
+type NixpkgsModulesLib = {
+  mkIf :: Bool -> dynamic -> dynamic;
+  mkMerge :: List dynamic -> dynamic;
+  mkDefault :: dynamic -> dynamic;
+  mkForce :: dynamic -> dynamic;
+  mkEnableOption :: String -> dynamic;
+  types :: dynamic;
+};
+
+type NixpkgsSystemsLib = {
+  flakeExposed :: List NixpkgsSystem;
+  all :: List NixpkgsSystem;
+};
+
+type NixpkgsLib = {
+  lists :: NixpkgsListsLib;
+  strings :: NixpkgsStringsLib;
+  attrsets :: NixpkgsAttrsetsLib;
+  trivial :: NixpkgsTrivialLib;
+  modules :: NixpkgsModulesLib;
+  systems :: NixpkgsSystemsLib;
+  mapAttrs :: forall a b. NixpkgsNamedMapper a b -> dynamic -> dynamic;
+  mapAttrs' :: forall a b. NixpkgsNamedMapper a (NixpkgsNameValuePair b) -> dynamic -> dynamic;
+  genAttrs :: List String -> (String -> dynamic) -> dynamic;
+  nameValuePair :: forall a. String -> a -> NixpkgsNameValuePair a;
+  listToAttrs :: forall a. List (NixpkgsNameValuePair a) -> dynamic;
+  attrNames :: dynamic -> List String;
+  attrValues :: dynamic -> List dynamic;
+  filter :: forall a. NixpkgsPredicate a -> List a -> List a;
+  all :: forall a. NixpkgsPredicate a -> List a -> Bool;
+  any :: forall a. NixpkgsPredicate a -> List a -> Bool;
+  concatMap :: forall a b. NixpkgsMapper a (List b) -> List a -> List b;
+  foldl' :: forall a b. NixpkgsFolder a b -> a -> List b -> a;
+  optional :: forall a. Bool -> a -> List a;
+  optionals :: forall a. Bool -> List a -> List a;
+  optionalAttrs :: Bool -> dynamic -> dynamic;
+  mkIf :: Bool -> dynamic -> dynamic;
+  mkMerge :: List dynamic -> dynamic;
+  mkDefault :: dynamic -> dynamic;
+  mkForce :: dynamic -> dynamic;
+};
