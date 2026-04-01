@@ -52,10 +52,12 @@ After compilation, type information is erased and only ordinary Nix code remains
 
 ## Design Docs
 
-- [Language Design](/Users/nishimura/Code/github.com/ubugeeei/tnix/docs/language-design.md)
-- [Type System](/Users/nishimura/Code/github.com/ubugeeei/tnix/docs/type-system.md)
-- [Architecture](/Users/nishimura/Code/github.com/ubugeeei/tnix/docs/architecture.md)
-- [Roadmap](/Users/nishimura/Code/github.com/ubugeeei/tnix/docs/roadmap.md)
+- [Getting Started](./docs/getting-started.md)
+- [Language Reference](./docs/language-reference.md)
+- [Language Design](./docs/language-design.md)
+- [Type System](./docs/type-system.md)
+- [Architecture](./docs/architecture.md)
+- [Roadmap](./docs/roadmap.md)
 
 ## Current Status
 
@@ -68,7 +70,7 @@ After compilation, type information is erased and only ordinary Nix code remains
 - gradual typing with ambient declarations, HKT support, indexed `Vec` / `Matrix` / `Tensor`, and heterogeneous `Tuple`
 - numeric singleton/primitive support via `Float`, `Number`, `Nat`, `Range`, and `Unit`
 
-See [CHANGELOG.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/CHANGELOG.md) for the release history.
+See [CHANGELOG.md](./CHANGELOG.md) for the release history.
 
 ## Distribution
 
@@ -86,4 +88,4 @@ nix run github:ubugeeei/tnix#tnix -- check ./main.tnix
 nix run github:ubugeeei/tnix#tnix-lsp
 ```
 
-See [RELEASING.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/RELEASING.md) for the release flow.
+See [RELEASING.md](./RELEASING.md) for the release flow.
