@@ -73,7 +73,7 @@ See [CHANGELOG.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/CHANGELOG.md) 
 
 The primary distribution channel is GitHub Releases. Tagged releases publish
 prebuilt `tnix` and `tnix-lsp` archives for supported platforms together with
-checksums.
+checksums, plus a packaged VS Code `.vsix` extension.
 
 The flake also exports installable packages and runnable apps:
 

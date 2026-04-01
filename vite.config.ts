@@ -4,13 +4,13 @@ export default defineConfig({
   run: {
     tasks: {
       build: {
-        command: "vp run build:haskell && pnpm --filter @tnix/vscode build && vp run build:zed",
+        command: "vp run build:haskell && pnpm --filter tnix build && vp run build:zed",
       },
       check: {
-        command: "vp run check:haskell && vp run test:haskell && vp run check:dogfood && pnpm --filter @tnix/vscode check && pnpm --filter @tnix/vscode test && vp run check:zed && vp run test:zed && vp run check:neovim",
+        command: "vp run check:haskell && vp run test:haskell && vp run check:dogfood && pnpm --filter tnix check && pnpm --filter tnix test && vp run check:zed && vp run test:zed && vp run check:neovim",
       },
       fmt: {
-        command: "vp run fmt:haskell && pnpm --filter @tnix/vscode fmt",
+        command: "vp run fmt:haskell && pnpm --filter tnix fmt",
       },
       "build:haskell": {
         command: "cabal build all",

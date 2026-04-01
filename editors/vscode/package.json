@@ -1,12 +1,31 @@
 {
-  "name": "@tnix/vscode",
+  "name": "tnix",
   "version": "0.2.0",
-  "private": true,
+  "publisher": "ubugeeei",
   "displayName": "tnix",
+  "description": "Gradual typing support for Nix via tnix-lsp.",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ubugeeei/tnix.git"
+  },
+  "homepage": "https://github.com/ubugeeei/tnix",
+  "bugs": {
+    "url": "https://github.com/ubugeeei/tnix/issues"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "nix",
+    "lsp",
+    "types",
+    "gradual-typing"
+  ],
   "engines": {
-    "vscode": "^1.95.0"
+    "vscode": "^1.110.0"
   },
   "activationEvents": [
     "onLanguage:tnix"
@@ -50,17 +69,20 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && ./node_modules/.bin/esbuild src/extension.ts --bundle --platform=node --format=esm --external:vscode --outfile=dist/extension.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test dist/*.spec.js",
-    "fmt": "prettier --check src package.json tsconfig.json language-configuration.json"
+    "fmt": "prettier --check src package.json tsconfig.json language-configuration.json README.md .vscodeignore",
+    "package": "vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@vscode/vsce": "^3.6.2",
     "@types/node": "^24.0.0",
     "@types/vscode": "^1.110.0",
+    "esbuild": "^0.25.3",
     "prettier": "^3.5.3",
     "typescript": "^5.8.3"
   }
