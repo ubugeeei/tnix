@@ -68,3 +68,11 @@ After compilation, type information is erased and only ordinary Nix code remains
 - gradual typing with ambient declarations, HKT support, indexed `Vec` / `Matrix` / `Tensor`, and heterogeneous `Tuple`
 
 See [CHANGELOG.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/CHANGELOG.md) for the release history.
+
+## Distribution
+
+The primary distribution channel is GitHub Releases. Tagged releases publish
+prebuilt `tnix` and `tnix-lsp` archives for supported platforms together with
+checksums.
+
+See [RELEASING.md](/Users/nishimura/Code/github.com/ubugeeei/tnix/RELEASING.md) for the release flow.
