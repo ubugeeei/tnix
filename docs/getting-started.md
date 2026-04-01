@@ -114,6 +114,31 @@ This is the main bridge for incremental adoption:
 - describe its public API in `.d.tnix` or inline `declare`
 - use that API from typed `.tnix`
 
+## Bundled Ecosystem Declarations
+
+The repository ships curated declaration packs under `registry/` for common Nix
+ecosystem surfaces. They are meant to be copied or vendored into your
+project-level declaration directory when you want a DefinitelyTyped-style
+starting point instead of handwriting every ambient declaration.
+
+Available packs currently cover:
+
+- `nixpkgs.lib`
+- `pkgs` / `import nixpkgs`
+- `flake-utils`, `home-manager`, `nix-darwin`, `flake-parts`
+- `devenv`, `treefmt-nix`, `pre-commit-hooks.nix`, `crane`, `deploy-rs`, `nixvim`, `sops-nix`, `agenix`, `disko`, `colmena`
+
+Example:
+
+```tnix
+declare "./flake-utils.nix" { default :: NixFlakeUtilsFlake; };
+declare "./devenv.nix" { default :: DevenvFlake; };
+declare "./pre-commit-hooks.nix" { default :: PreCommitHooksFlake; };
+```
+
+This keeps the runtime import path local to your project while reusing stable
+alias names from the bundled registry packs.
+
 ## Lists, Vectors, And Matrices
 
 Plain Nix list syntax can infer more precise indexed shapes.

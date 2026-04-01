@@ -289,6 +289,29 @@ declare "./legacy/default.nix" {
 };
 ```
 
+### Bundled Registry Packs
+
+The repository also ships curated `.d.tnix` packs under `registry/`. These
+packs are alias-only and are meant to be reused from local `declare` blocks.
+
+Current packs include:
+
+- `NixpkgsLib`, `NixpkgsPkgs`, and related aliases for `nixpkgs`
+- `NixFlakeUtilsFlake`, `HomeManagerFlake`, `NixDarwinFlake`, `FlakePartsLib`
+- `DevenvFlake`, `TreefmtNixFlake`, `PreCommitHooksFlake`, `CraneFlake`
+- `DeployRsFlake`, `NixvimFlake`, `SopsNixFlake`, `AgenixFlake`, `DiskoFlake`, `ColmenaFlake`
+
+Example:
+
+```tnix
+declare "./nixpkgs.nix" { default :: NixpkgsImport; };
+declare "./home-manager.nix" { default :: HomeManagerFlake; };
+declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
+```
+
+The checker resolves those aliases exactly like aliases written in your own
+`.d.tnix` files.
+
 ## Inference Notes
 
 ### Structural Records

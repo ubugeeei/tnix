@@ -71,6 +71,27 @@ After compilation, type information is erased and only ordinary Nix code remains
 - numeric singleton/primitive support via `Float`, `Number`, `Nat`, `Range`, and `Unit`
 - TypeScript-style checker directives via `# @tnix-ignore` and `# @tnix-expected`
 - project bootstrapping via `tnix init`, `tnix scaffold`, and `tnix.config.tnix`
+- curated ecosystem declaration packs under `registry/` for `nixpkgs`, flake utilities, and popular community flakes
+
+## Bundled Registry Packs
+
+The repository includes reusable `.d.tnix` packs under `registry/` so projects
+can vendor common Nix ecosystem types instead of rewriting ambient declarations
+from scratch.
+
+- `registry/nixpkgs-lib.d.tnix`
+- `registry/nixpkgs-pkgs.d.tnix`
+- `registry/flake-ecosystem.d.tnix`
+- `registry/community-flakes.d.tnix`
+
+Typical usage is to copy the pack you want into your declaration directory and
+reuse its aliases from local `declare` blocks:
+
+```tnix
+declare "./flake-utils.nix" { default :: NixFlakeUtilsFlake; };
+declare "./devenv.nix" { default :: DevenvFlake; };
+declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
+```
 
 See [CHANGELOG.md](./CHANGELOG.md) for the release history.
 
