@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | High-level entry points that stitch parsing, checking, compilation, ambient
@@ -26,7 +27,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Exception (IOException, try)
 import Control.Monad (foldM, forM)
-import Data.List (group, isSuffixOf, sort)
+import Data.List (group, isSuffixOf, nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -144,6 +145,12 @@ data World = World
     worldAmbient :: Map FilePath Scheme
   }
 
+data DeclarationSupportFile = DeclarationSupportFile
+  { declarationLoadPath :: FilePath,
+    declarationResolvePath :: FilePath
+  }
+  deriving (Eq, Ord, Show)
+
 builtinsAmbientKey :: FilePath
 builtinsAmbientKey = "builtins"
 
@@ -154,15 +161,127 @@ loadSupport path = do
   if not exists
     then pure (Right (World [] Map.empty))
     else do
-      files <- sort . filter (/= normalise path) <$> findDeclarationFiles root
-      worlds <- forM files loadDeclarationFile
-      pure $ do
-        loaded <- sequence worlds
-        ambient <- mergeAmbientWorlds (zip files (map worldAmbient loaded))
-        pure World {worldAliases = concatMap worldAliases loaded, worldAmbient = ambient}
+      workspaceFiles <- map (\file -> DeclarationSupportFile file file) <$> findDeclarationFiles root
+      configuredFilesResult <- loadConfiguredDeclarationFiles root
+      case configuredFilesResult of
+        Left err -> pure (Left err)
+        Right configuredFiles -> do
+          let declarationFiles =
+                dedupeDeclarationFiles path (workspaceFiles <> configuredFiles)
+          worlds <- traverse loadDeclarationFile declarationFiles
+          pure $ do
+            loaded <- sequence worlds
+            mergeLoadedWorlds declarationFiles loaded
 
-loadDeclarationFile :: FilePath -> IO (Either String World)
-loadDeclarationFile path = do
+dedupeDeclarationFiles :: FilePath -> [DeclarationSupportFile] -> [DeclarationSupportFile]
+dedupeDeclarationFiles source =
+  nub
+    . sort
+    . filter ((/= normalise source) . declarationLoadPath)
+    . map normalizeDeclarationSupportFile
+
+normalizeDeclarationSupportFile :: DeclarationSupportFile -> DeclarationSupportFile
+normalizeDeclarationSupportFile file =
+  file
+    { declarationLoadPath = normalise (declarationLoadPath file),
+      declarationResolvePath = normalise (declarationResolvePath file)
+    }
+
+loadConfiguredDeclarationFiles :: FilePath -> IO (Either String [DeclarationSupportFile])
+loadConfiguredDeclarationFiles root = do
+  let configPath = root </> "tnix.config.tnix"
+  exists <- doesFileExist configPath
+  if not exists
+    then pure (Right [])
+    else do
+      inputResult <- readTextFile configPath
+      case inputResult of
+        Left err -> pure (Left err)
+        Right input ->
+          case parseText configPath input of
+            Left err -> pure (Left ("failed to parse " <> configPath <> ": " <> err))
+            Right program ->
+              case configuredDeclarationPackPaths configPath program of
+                Left err -> pure (Left err)
+                Right packs -> do
+                  expanded <- traverse (expandDeclarationPackPath root) packs
+                  pure (fmap concat (sequence expanded))
+
+configuredDeclarationPackPaths :: FilePath -> Program -> Either String [FilePath]
+configuredDeclarationPackPaths configPath program = do
+  expr <- maybe (Left ("tnix.config.tnix must contain a root attribute set: " <> configPath)) (Right . markedValue) (programExpr program)
+  decodeDeclarationPackField (takeDirectory configPath) expr
+
+decodeDeclarationPackField :: FilePath -> Expr -> Either String [FilePath]
+decodeDeclarationPackField root = \case
+  EAttrSet items ->
+    case [expr | AttrField "declarationPacks" expr <- items] of
+      [] -> Right []
+      [expr] -> decodePathList root "declarationPacks" expr
+      _ -> Left "duplicate config field: declarationPacks"
+  _ -> Left "tnix.config.tnix must evaluate to an attrset"
+
+decodePathList :: FilePath -> Text -> Expr -> Either String [FilePath]
+decodePathList root label = \case
+  EList items -> traverse decodeItem items
+  other -> Left ("expected list of path-like values for " <> Text.unpack label <> ", but got " <> show other)
+  where
+    decodeItem = \case
+      EPath path -> Right (resolveConfigPath root path)
+      EString text -> Right (resolveConfigPath root (Text.unpack text))
+      item -> Left ("expected path-like item in " <> Text.unpack label <> ", but got " <> show item)
+
+expandDeclarationPackPath :: FilePath -> FilePath -> IO (Either String [DeclarationSupportFile])
+expandDeclarationPackPath root path = do
+  let normalized = normalise path
+  isDir <- doesDirectoryExist normalized
+  fileExists <- doesFileExist normalized
+  if isDir
+    then do
+      files <- findDeclarationFiles normalized
+      pure (Right (map (mkDeclarationSupportFile root) files))
+    else
+      if fileExists
+        then
+          if ".d.tnix" `isSuffixOf` normalized
+            then pure (Right [mkDeclarationSupportFile root normalized])
+            else pure (Left ("declarationPacks entries must point to .d.tnix files or directories, but got " <> normalized))
+        else pure (Left ("declarationPacks entry does not exist: " <> normalized))
+
+mkDeclarationSupportFile :: FilePath -> FilePath -> DeclarationSupportFile
+mkDeclarationSupportFile root loadPath =
+  DeclarationSupportFile
+    { declarationLoadPath = loadPath,
+      declarationResolvePath = maybe (normalise loadPath) (normalise . (root </>) . joinPath) (workspacePackRelativeParts loadPath)
+    }
+
+workspacePackRelativeParts :: FilePath -> Maybe [FilePath]
+workspacePackRelativeParts path =
+  findWorkspacePackSuffix (splitDirectories (normalise path))
+  where
+    findWorkspacePackSuffix ("registry" : "workspace" : rest) = Just ("registry" : "workspace" : rest)
+    findWorkspacePackSuffix (_ : rest) = findWorkspacePackSuffix rest
+    findWorkspacePackSuffix [] = Nothing
+
+resolveConfigPath :: FilePath -> FilePath -> FilePath
+resolveConfigPath root target
+  | isAbsolute target = normalise target
+  | otherwise = normalise (root </> dropDotSlash target)
+
+dropDotSlash :: FilePath -> FilePath
+dropDotSlash path =
+  case path of
+    '.' : '/' : rest -> rest
+    _ -> path
+
+mergeLoadedWorlds :: [DeclarationSupportFile] -> [World] -> Either String World
+mergeLoadedWorlds files loaded = do
+  ambient <- mergeAmbientWorlds (zip (map declarationLoadPath files) (map worldAmbient loaded))
+  pure World {worldAliases = concatMap worldAliases loaded, worldAmbient = ambient}
+
+loadDeclarationFile :: DeclarationSupportFile -> IO (Either String World)
+loadDeclarationFile file = do
+  let path = declarationLoadPath file
   inputResult <- readTextFile path
   pure $ do
     input <- inputResult
@@ -172,19 +291,22 @@ loadDeclarationFile path = do
       Nothing -> do
         _ <- validateProgramKinds (programAliases program) program
         _ <- validateProgramIndexedTypes program
-        ambient <- collectAmbient path program
+        ambient <- collectAmbientWithBase path (declarationResolvePath file) program
         pure World {worldAliases = programAliases program, worldAmbient = ambient}
 
 collectAmbient :: FilePath -> Program -> Either String (Map FilePath Scheme)
-collectAmbient file program = do
-  let duplicates = duplicateNames (map (resolvePath file . ambientPath) (programAmbient program))
+collectAmbient file = collectAmbientWithBase file file
+
+collectAmbientWithBase :: FilePath -> FilePath -> Program -> Either String (Map FilePath Scheme)
+collectAmbientWithBase file resolveBase program = do
+  let duplicates = duplicateNames (map (resolvePath resolveBase . ambientPath) (programAmbient program))
   case duplicates of
     dup : _ -> Left ("duplicate ambient declarations for target " <> show dup <> " in " <> file)
     [] -> Map.fromList <$> traverse toPair (programAmbient program)
   where
     toPair decl = do
       scheme <- schemeFromEntries (ambientEntries decl)
-      pure (resolvePath file (ambientPath decl), scheme)
+      pure (resolvePath resolveBase (ambientPath decl), scheme)
     schemeFromEntries entries =
       case duplicateNames (map ambientEntryName entries) of
         dup : _ -> Left ("duplicate ambient entry " <> show dup <> " in " <> file)

@@ -141,7 +141,9 @@ spec = do
         configDecl <- TextIO.readFile configDeclPath
         entry <- TextIO.readFile entryPath
         Text.isInfixOf "sourceDir = ./src;" config `shouldBe` True
+        Text.isInfixOf "declarationPacks = [];" config `shouldBe` True
         Text.isInfixOf "declare \"./tnix.config.tnix\"" configDecl `shouldBe` True
+        Text.isInfixOf "declarationPacks :: List TnixProjectPath;" configDecl `shouldBe` True
         Text.isInfixOf "Hello from" entry `shouldBe` True
         Text.isInfixOf "tnix.config.tnix" output `shouldBe` True
 

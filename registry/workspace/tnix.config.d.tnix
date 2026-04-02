@@ -5,6 +5,12 @@ type TnixProjectConfig = {
   sourceDir :: TnixProjectPath;
   entry :: TnixProjectPath;
   declarationDir :: TnixProjectPath;
+  declarationPacks :: List TnixProjectPath;
+  buildDir :: TnixProjectPath;
+  generatedDeclarationDir :: TnixProjectPath;
+  entries :: List TnixProjectPath;
+  include :: List TnixProjectPath;
+  exclude :: List TnixProjectPath;
   builtins :: Bool;
 };
 

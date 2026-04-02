@@ -130,6 +130,22 @@ declare "./devenv.nix" { default :: DevenvFlake; };
 declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
 ```
 
+Projects can also point `tnix.config.tnix` at external pack files or
+directories directly:
+
+```tnix
+{
+  declarationPacks = [
+    ../vendor/tnix/registry/ecosystem
+    ../vendor/tnix/registry/workspace
+  ];
+}
+```
+
+When a configured pack comes from `registry/workspace/`, tnix rebases its
+ambient `declare` targets to your project root so upstream workspace packs can
+be used without copying them into the repo first.
+
 The workspace packs assume they live under `registry/workspace/` so their
 relative `declare` targets resolve back to the project root.
 

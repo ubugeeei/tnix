@@ -36,6 +36,7 @@ data ProjectConfig = ProjectConfig
     configSourceDir :: FilePath,
     configEntry :: FilePath,
     configDeclarationDir :: FilePath,
+    configDeclarationPacks :: [FilePath],
     configBuildDir :: FilePath,
     configGeneratedDeclarationDir :: FilePath,
     configEntries :: [FilePath],
@@ -103,6 +104,7 @@ defaultConfig root =
           configSourceDir = sourceDir,
           configEntry = entry,
           configDeclarationDir = declarationDir,
+          configDeclarationPacks = [],
           configBuildDir = buildDir,
           configGeneratedDeclarationDir = generatedDeclarationDir,
           configEntries = [],
@@ -119,6 +121,7 @@ renderConfig config =
       "  sourceDir = " <> prettyPath (configSourceDir config) <> ";",
       "  entry = " <> prettyPath (configEntry config) <> ";",
       "  declarationDir = " <> prettyPath (configDeclarationDir config) <> ";",
+      "  declarationPacks = " <> prettyPathList (configDeclarationPacks config) <> ";",
       "  buildDir = " <> prettyPath (configBuildDir config) <> ";",
       "  generatedDeclarationDir = " <> prettyPath (configGeneratedDeclarationDir config) <> ";",
       "  entries = " <> prettyPathList (configEntries config) <> ";",
@@ -254,6 +257,7 @@ loadProjectConfig configPath = do
         sourceDir <- maybe (Right (root </> "src")) (decodePathField root "sourceDir") (Map.lookup "sourceDir" fields)
         entry <- maybe (Right (sourceDir </> "main.tnix")) (decodePathField root "entry") (Map.lookup "entry" fields)
         declarationDir <- maybe (Right (root </> "types")) (decodePathField root "declarationDir") (Map.lookup "declarationDir" fields)
+        declarationPacks <- maybe (Right []) (decodePathListField root "declarationPacks") (Map.lookup "declarationPacks" fields)
         buildDir <- maybe (Right (root </> "dist")) (decodePathField root "buildDir") (Map.lookup "buildDir" fields)
         generatedDeclarationDir <- maybe (Right (buildDir </> "types")) (decodePathField root "generatedDeclarationDir") (Map.lookup "generatedDeclarationDir" fields)
         entries <- maybe (Right []) (decodePathListField root "entries") (Map.lookup "entries" fields)
@@ -267,6 +271,7 @@ loadProjectConfig configPath = do
               configSourceDir = sourceDir,
               configEntry = entry,
               configDeclarationDir = declarationDir,
+              configDeclarationPacks = declarationPacks,
               configBuildDir = buildDir,
               configGeneratedDeclarationDir = generatedDeclarationDir,
               configEntries = entries,
@@ -368,6 +373,7 @@ renderConfigDeclarationFile _ =
       "  sourceDir :: TnixProjectPath;",
       "  entry :: TnixProjectPath;",
       "  declarationDir :: TnixProjectPath;",
+      "  declarationPacks :: List TnixProjectPath;",
       "  buildDir :: TnixProjectPath;",
       "  generatedDeclarationDir :: TnixProjectPath;",
       "  entries :: List TnixProjectPath;",

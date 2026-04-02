@@ -331,6 +331,21 @@ declare "./home-manager.nix" { default :: HomeManagerFlake; };
 declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
 ```
 
+You can also register external pack paths from `tnix.config.tnix`:
+
+```tnix
+{
+  declarationPacks = [
+    ../vendor/tnix/registry/ecosystem
+    ../vendor/tnix/registry/workspace
+  ];
+}
+```
+
+Configured `registry/workspace/` packs are resolved against the current project
+root, so upstream workspace declarations still describe your local
+`tnix.config.tnix` and `flake.nix`.
+
 The checker resolves those aliases exactly like aliases written in your own
 `.d.tnix` files.
 

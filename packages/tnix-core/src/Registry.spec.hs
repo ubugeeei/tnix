@@ -80,6 +80,50 @@ spec = describe "bundled registry" $ do
           renderedRoot analysis `shouldBe` "Tuple [ Bool String ]"
       )
 
+  it "lets projects load bundled workspace declarations via declarationPacks without copying" $ do
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
+    let workspacePack = root </> "registry/workspace"
+    withTempTree
+      [ ( "tnix.config.tnix",
+          source
+            [ "{",
+              "  name = \"demo\";",
+              "  declarationPacks = [ \"" <> Text.pack workspacePack <> "\" ];",
+              "}"
+            ]
+        ),
+        ( "flake.nix",
+          source
+            [ "{",
+              "  description = \"demo flake\";",
+              "  inputs = {",
+              "    nixpkgs = { url = \"github:NixOS/nixpkgs\"; };",
+              "    flake-utils = { url = \"github:numtide/flake-utils\"; };",
+              "  };",
+              "  outputs = inputs: {",
+              "    formatter = {",
+              "      x86_64-linux = 1;",
+              "      aarch64-linux = 1;",
+              "      x86_64-darwin = 1;",
+              "      aarch64-darwin = 1;",
+              "    };",
+              "    devShells = {",
+              "      x86_64-linux = { default = 1; };",
+              "      aarch64-linux = { default = 1; };",
+              "      x86_64-darwin = { default = 1; };",
+              "      aarch64-darwin = { default = 1; };",
+              "    };",
+              "  };",
+              "}"
+            ]
+        ),
+        ("src/main.tnix", "let cfg = import ../tnix.config.tnix; flake = import ../flake.nix; in [cfg.declarationPacks flake.description]")
+      ]
+      ( \tmp -> do
+          analysis <- analyzeFile (tmp </> "src/main.tnix") >>= expectRight
+          renderedRoot analysis `shouldBe` "Tuple [ (List (Path | String)) String ]"
+      )
+
   it "lets projects reuse bundled nixpkgs aliases inside ambient declarations" $ do
     root <- findBundledRegistryRoot =<< getCurrentDirectory
     registry <- loadRegistry root ["registry/ecosystem/nixpkgs-lib.d.tnix", "registry/ecosystem/nixpkgs-pkgs.d.tnix"]
@@ -95,6 +139,36 @@ spec = describe "bundled registry" $ do
                ("pkgs-surface.tnix", "let pkgs = import ./pkgs.nix; in pkgs.writeShellScriptBin")
              ]
       )
+      ( \tmp -> do
+          libAnalysis <- analyzeFile (tmp </> "lib-surface.tnix") >>= expectRight
+          pkgsAnalysis <- analyzeFile (tmp </> "pkgs-surface.tnix") >>= expectRight
+          renderedRoot libAnalysis `shouldBe` "String -> List String -> String"
+          let renderedPkgs = renderedRoot pkgsAnalysis
+          Text.isInfixOf "String -> String ->" renderedPkgs `shouldBe` True
+          Text.isInfixOf "derivationType :: \"derivation\"" renderedPkgs `shouldBe` True
+      )
+
+  it "lets projects load bundled ecosystem aliases via declarationPacks without copying" $ do
+    root <- findBundledRegistryRoot =<< getCurrentDirectory
+    let ecosystemPack = root </> "registry/ecosystem"
+    withTempTree
+      [ ( "tnix.config.tnix",
+          source
+            [ "{",
+              "  name = \"demo\";",
+              "  declarationPacks = [ \"" <> Text.pack ecosystemPack <> "\" ];",
+              "}"
+            ]
+        ),
+        ( "types.d.tnix",
+          source
+            [ "declare \"./lib.nix\" { default :: NixpkgsLib; };",
+              "declare \"./pkgs.nix\" { default :: NixpkgsPkgs; };"
+            ]
+        ),
+        ("lib-surface.tnix", "let lib = import ./lib.nix; in lib.strings.concatStringsSep"),
+        ("pkgs-surface.tnix", "let pkgs = import ./pkgs.nix; in pkgs.writeShellScriptBin")
+      ]
       ( \tmp -> do
           libAnalysis <- analyzeFile (tmp </> "lib-surface.tnix") >>= expectRight
           pkgsAnalysis <- analyzeFile (tmp </> "pkgs-surface.tnix") >>= expectRight

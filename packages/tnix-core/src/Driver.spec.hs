@@ -3,6 +3,10 @@
 module Main (main) where
 
 import Data.Map.Strict qualified as Map
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TextIO
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>))
 import Test.Hspec
 import Driver (Analysis (..), analyzeFile, analyzeText, compileFile, emitFile)
 import Pretty (renderScheme)
@@ -536,6 +540,12 @@ spec = describe "analysis" $ do
               "  sourceDir = ./src;",
               "  entry = ./src/main.tnix;",
               "  declarationDir = ./types;",
+              "  declarationPacks = [];",
+              "  buildDir = ./dist;",
+              "  generatedDeclarationDir = ./dist/types;",
+              "  entries = [];",
+              "  include = [];",
+              "  exclude = [];",
               "  builtins = true;",
               "}"
             ]
@@ -548,6 +558,12 @@ spec = describe "analysis" $ do
               "  sourceDir :: TnixProjectPath;",
               "  entry :: TnixProjectPath;",
               "  declarationDir :: TnixProjectPath;",
+              "  declarationPacks :: List TnixProjectPath;",
+              "  buildDir :: TnixProjectPath;",
+              "  generatedDeclarationDir :: TnixProjectPath;",
+              "  entries :: List TnixProjectPath;",
+              "  include :: List TnixProjectPath;",
+              "  exclude :: List TnixProjectPath;",
               "  builtins :: Bool;",
               "};",
               "declare \"./tnix.config.tnix\" {",
@@ -560,6 +576,29 @@ spec = describe "analysis" $ do
       ( \root -> do
           analysis <- analyzeFile (root <> "/src/main.tnix") >>= expectRight
           fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Path | String"
+      )
+
+  it "loads external declaration packs listed in tnix.config.tnix" $
+    withTempTree
+      [ ("types.d.tnix", "declare \"./lib.nix\" { default :: ExternalSurface; };"),
+        ("src/main.tnix", "(import ../lib.nix).value")
+      ]
+      ( \root -> do
+          let packRoot = root <> "-packs"
+              packFile = packRoot </> "external.d.tnix"
+          createDirectoryIfMissing True packRoot
+          TextIO.writeFile packFile "type ExternalSurface = { value :: Int; };"
+          TextIO.writeFile
+            (root </> "tnix.config.tnix")
+            ( source
+                [ "{",
+                  "  name = \"demo\";",
+                  "  declarationPacks = [ \"" <> Text.pack packRoot <> "\" ];",
+                  "}"
+                ]
+            )
+          analysis <- analyzeFile (root </> "src/main.tnix") >>= expectRight
+          fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Int"
       )
 
   it "joins field types when selecting from unions of compatible records" $ do

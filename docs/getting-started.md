@@ -53,6 +53,12 @@ The generated config is ordinary tnix syntax:
   sourceDir = ./src;
   entry = ./src/main.tnix;
   declarationDir = ./types;
+  declarationPacks = [];
+  buildDir = ./dist;
+  generatedDeclarationDir = ./dist/types;
+  entries = [];
+  include = [];
+  exclude = [];
   builtins = true;
 }
 ```
@@ -147,6 +153,22 @@ declare "./pre-commit-hooks.nix" { default :: PreCommitHooksFlake; };
 
 This keeps the runtime import path local to your project while reusing stable
 alias names from the bundled registry packs.
+
+If you want to consume the upstream packs without copying them into your
+repository, list them in `declarationPacks`:
+
+```tnix
+{
+  declarationPacks = [
+    ../vendor/tnix/registry/ecosystem
+    ../vendor/tnix/registry/workspace
+  ];
+}
+```
+
+`registry/workspace/` packs are rebased onto your current project root, so
+their ambient declarations still target your local `flake.nix` and
+`tnix.config.tnix`.
 
 ## Lists, Vectors, And Matrices
 
