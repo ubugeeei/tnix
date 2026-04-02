@@ -5,10 +5,11 @@ module Main (main) where
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
+import System.FilePath ((</>))
 import Test.Hspec
 import Driver (compileFile, compileText, emitFile, emitFileTo, emitText, parseText)
 import Syntax
-import TestSupport (expectLeftContaining, expectRight, fixturePath, source, withTempTree)
+import TestSupport (expectLeftContaining, expectRight, fixturePathCandidates, source, withTempTree)
 import Type
 
 main :: IO ()
@@ -376,9 +377,14 @@ compileEmitFixtures =
 goldenFixtureSpec :: FilePath -> Spec
 goldenFixtureSpec name =
   it ("matches the stored compile and emit output for " <> name) $ do
-    sourceFile <- fixturePath ("packages/tnix-core/fixtures/compile-emit/" <> name <> "/main.tnix")
-    expectedNixFile <- fixturePath ("packages/tnix-core/fixtures/compile-emit/" <> name <> "/expected.nix")
-    expectedDeclFile <- fixturePath ("packages/tnix-core/fixtures/compile-emit/" <> name <> "/expected.d.tnix")
+    fixtureRoot <-
+      fixturePathCandidates
+        [ "packages/tnix-core/fixtures/compile-emit/" <> name,
+          "fixtures/compile-emit/" <> name
+        ]
+    let sourceFile = fixtureRoot </> "main.tnix"
+        expectedNixFile = fixtureRoot </> "expected.nix"
+        expectedDeclFile = fixtureRoot </> "expected.d.tnix"
     compiled <- Text.stripEnd <$> (compileFile sourceFile >>= expectRight)
     expectedNix <- Text.stripEnd <$> TextIO.readFile expectedNixFile
     emitted <- Text.stripEnd <$> (emitFile sourceFile >>= expectRight)

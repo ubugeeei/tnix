@@ -4,6 +4,7 @@ module TestSupport
   ( expectLeftContaining,
     expectRight,
     fixturePath,
+    fixturePathCandidates,
     source,
     withTempTree,
   )
@@ -34,22 +35,31 @@ source :: [Text] -> Text
 source = Text.unlines
 
 fixturePath :: FilePath -> IO FilePath
-fixturePath relative = do
+fixturePath relative = fixturePathCandidates [relative]
+
+fixturePathCandidates :: [FilePath] -> IO FilePath
+fixturePathCandidates candidates = do
   cwd <- getCurrentDirectory
-  findRepoRoot (normalise cwd)
+  findFixtureRoot (normalise cwd)
   where
-    findRepoRoot dir = do
-      let markerFile = dir </> "cabal.project"
-          markerDir = dir </> ".git"
-      hasProject <- doesFileExist markerFile
-      hasGit <- doesDirectoryExist markerDir
-      if hasProject || hasGit
-        then pure (dir </> relative)
-        else
+    findFixtureRoot dir = do
+      existing <- firstExistingPath dir candidates
+      case existing of
+        Just path -> pure path
+        Nothing ->
           let parent = normalise (takeDirectory dir)
            in if parent == dir
-                then expectationFailure ("could not locate repo root for fixture path " <> show relative) >> fail "missing repo root"
-                else findRepoRoot parent
+                then expectationFailure ("could not locate fixture path in ancestors: " <> show candidates) >> fail "missing fixture path"
+                else findFixtureRoot parent
+
+    firstExistingPath _ [] = pure Nothing
+    firstExistingPath dir (candidate : rest) = do
+      let path = dir </> candidate
+      fileExists <- doesFileExist path
+      dirExists <- doesDirectoryExist path
+      if fileExists || dirExists
+        then pure (Just path)
+        else firstExistingPath dir rest
 
 withTempTree :: [(FilePath, Text)] -> (FilePath -> IO a) -> IO a
 withTempTree files action = bracket createRoot removePathForcibly (\root -> writeTree root >> action root)
