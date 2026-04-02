@@ -12,7 +12,6 @@ import Control.Monad (forever)
 import Control.Exception (IOException, try)
 import Data.Aeson
 import Data.IORef
-import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text.IO qualified as TIO
 import Data.Version (showVersion)
@@ -88,7 +87,7 @@ update ref msg = do
   docs <- readIORef ref
   (docs', file, result) <- Session.updateDocuments readFileSafe analyzeText docs msg
   writeIORef ref docs'
-  pure (file, Map.lookup file docs', result)
+  pure (file, Session.lookupDocumentText file docs', result)
 
 -- | Publish diagnostics for the latest analysis result.
 publish :: (FilePath, Maybe Text, Either String Analysis) -> IO ()

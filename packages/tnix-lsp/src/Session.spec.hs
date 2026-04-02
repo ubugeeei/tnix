@@ -32,25 +32,25 @@ spec = do
       let msg = openMessage "/tmp/main.tnix" "1"
       (docs, file, result) <- updateDocuments readNever analyzeStub mempty msg
       file `shouldBe` "/tmp/main.tnix"
-      Map.lookup file docs `shouldBe` Just "1"
+      lookupDocumentText file docs `shouldBe` Just "1"
       fmap analysisRoot result `shouldBe` Right (Just (Scheme [] tInt))
 
     it "applies incremental changes against cached documents" $ do
-      let docs = Map.fromList [("/tmp/main.tnix", "let value = 1;\n")]
+      let docs = documentsFromList [("/tmp/main.tnix", "let value = 1;\n")]
           msg = changeMessage "/tmp/main.tnix" [replaceRange 0 4 0 9 "result", replaceRange 0 13 0 14 "2"]
       (docs', _, result) <- updateDocuments readNever analyzeStub docs msg
-      Map.lookup "/tmp/main.tnix" docs' `shouldBe` Just "let result = 2;\n"
+      lookupDocumentText "/tmp/main.tnix" docs' `shouldBe` Just "let result = 2;\n"
       fmap analysisBindings result `shouldBe` Right (Map.fromList [("result", Scheme [] tInt)])
 
     it "falls back to disk for uncached incremental updates" $ do
       let msg = changeMessage "/tmp/main.tnix" [replaceRange 0 0 0 1 "2"]
       (docs, file, result) <- updateDocuments (\_ -> pure (Right "1")) analyzeStub mempty msg
       file `shouldBe` "/tmp/main.tnix"
-      Map.lookup file docs `shouldBe` Just "2"
+      lookupDocumentText file docs `shouldBe` Just "2"
       fmap analysisBindings result `shouldBe` Right (Map.fromList [("result", Scheme [] tInt)])
 
     it "keeps the previous cache when incremental edits are invalid" $ do
-      let docs = Map.fromList [("/tmp/main.tnix", "x")]
+      let docs = documentsFromList [("/tmp/main.tnix", "x")]
           msg = changeMessage "/tmp/main.tnix" [replaceRange 0 2 0 3 "y"]
       (docs', _, result) <- updateDocuments readNever analyzeStub docs msg
       docs' `shouldBe` docs
@@ -59,26 +59,26 @@ spec = do
     it "retains the latest text even when analysis reports an error" $ do
       let msg = openMessage "/tmp/main.tnix" "missing"
       (docs, file, result) <- updateDocuments readNever analyzeFailing mempty msg
-      Map.lookup file docs `shouldBe` Just "missing"
+      lookupDocumentText file docs `shouldBe` Just "missing"
       result `shouldBe` Left "analysis failed for missing"
 
   describe "closeDocuments" $ do
     it "removes cached documents and returns the closed path" $ do
-      let docs = Map.fromList [("/tmp/main.tnix", "1"), ("/tmp/other.tnix", "2")]
+      let docs = documentsFromList [("/tmp/main.tnix", "1"), ("/tmp/other.tnix", "2")]
           msg = closeMessage "/tmp/main.tnix"
           (docs', closed) = closeDocuments docs msg
       closed `shouldBe` Just "/tmp/main.tnix"
-      docs' `shouldBe` Map.fromList [("/tmp/other.tnix", "2")]
+      docs' `shouldBe` documentsFromList [("/tmp/other.tnix", "2")]
 
     it "leaves the cache untouched when the close notification is malformed" $ do
-      let docs = Map.fromList [("/tmp/main.tnix", "1")]
+      let docs = documentsFromList [("/tmp/main.tnix", "1")]
           (docs', closed) = closeDocuments docs (object ["params" .= object []])
       closed `shouldBe` Nothing
       docs' `shouldBe` docs
 
   describe "hoverDocument" $ do
     it "prefers cached content over disk when computing hover" $ do
-      let docs = Map.fromList [("/tmp/main.tnix", "box")]
+      let docs = documentsFromList [("/tmp/main.tnix", "box")]
       hover <- hoverDocument (\_ -> pure (Left "should not read")) analyzeStub docs (hoverMessage "/tmp/main.tnix" 0 1)
       hoverText hover `shouldBe` "```tnix\nString\n```"
 
@@ -92,7 +92,7 @@ spec = do
 
   describe "completionDocument" $ do
     it "returns field completions from the current analyzed buffer" $ do
-      completions <- completionDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", "box.")]) (completionMessage "/tmp/main.tnix" 0 4)
+      completions <- completionDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", "box.")]) (completionMessage "/tmp/main.tnix" 0 4)
       completionLabels completions `shouldBe` ["alpha", "beta"]
 
     it "returns an empty completion list when loading the document fails" $ do
@@ -102,7 +102,7 @@ spec = do
   describe "definitionDocument" $ do
     it "jumps to the local binding of the selected symbol" $ do
       let content = Text.unlines ["let", "  value = 1;", "in value"]
-      definition <- definitionDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (definitionMessage "/tmp/main.tnix" 2 6)
+      definition <- definitionDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", content)]) (definitionMessage "/tmp/main.tnix" 2 6)
       definitionLocation definition `shouldBe` Just ("/tmp/main.tnix", 1, 2, 7)
 
     it "jumps builtins members into the nearest ambient declaration file" $
@@ -119,19 +119,19 @@ spec = do
   describe "referencesDocument" $
     it "returns all local references for a binding in the active buffer" $ do
       let content = Text.unlines ["let", "  value = 1;", "in value value"]
-      references <- referencesDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (definitionMessage "/tmp/main.tnix" 2 6)
+      references <- referencesDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", content)]) (definitionMessage "/tmp/main.tnix" 2 6)
       referenceLocations references `shouldBe` [("/tmp/main.tnix", 1, 2, 7), ("/tmp/main.tnix", 2, 3, 8), ("/tmp/main.tnix", 2, 9, 14)]
 
   describe "renameDocument" $
     it "builds workspace edits for local references" $ do
       let content = Text.unlines ["let", "  value = 1;", "in value"]
-      rename <- renameDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (renameMessage "/tmp/main.tnix" 2 6 "answer")
+      rename <- renameDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", content)]) (renameMessage "/tmp/main.tnix" 2 6 "answer")
       renameEdits rename `shouldBe` [("/tmp/main.tnix", [(1, 2, 7, "answer"), (2, 3, 8, "answer")])]
 
   describe "documentSymbolsDocument" $
     it "surfaces aliases and let bindings as symbols" $ do
       let content = Text.unlines ["type Box = { value :: Int; };", "let", "  value = 1;", "in value"]
-      symbols <- documentSymbolsDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (documentSymbolMessage "/tmp/main.tnix")
+      symbols <- documentSymbolsDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", content)]) (documentSymbolMessage "/tmp/main.tnix")
       symbolNames symbols `shouldBe` ["Box", "value"]
 
   describe "workspaceSymbolsDocument" $
@@ -142,7 +142,7 @@ spec = do
           ("pkg/b.tnix", Text.unlines ["let", "  widget = 1;", "in widget"])
         ]
         ( \root -> do
-            let docs = Map.fromList [(root </> "pkg/a.tnix", Text.unlines ["type Box = { value :: Int; };", "1"])]
+            let docs = documentsFromList [(root </> "pkg/a.tnix", Text.unlines ["type Box = { value :: Int; };", "1"])]
             symbols <- workspaceSymbolsDocument readFileStub analyzeCompletion docs (workspaceSymbolMessage "wid")
             symbolNames symbols `shouldBe` ["widget"]
         )
@@ -151,13 +151,13 @@ spec = do
     it "offers directive quick fixes and obvious rename suggestions" $ do
       let content = "mising"
           diagnostic = object ["message" .= ("unbound name: \"mising\"" :: Text), "range" .= rangeObject 0 0 0 6]
-      actions <- codeActionsDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (codeActionMessage "/tmp/main.tnix" [diagnostic])
+      actions <- codeActionsDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", content)]) (codeActionMessage "/tmp/main.tnix" [diagnostic])
       codeActionTitles actions `shouldBe` ["Add `# @tnix-ignore`", "Add `# @tnix-expected`", "Replace with `missing`"]
 
   describe "semanticTokensDocument" $
     it "returns encoded semantic tokens for keywords, types, and strings" $ do
       let content = Text.unlines ["type Box = String;", "let", "  value = \"tnix\";", "in value"]
-      tokens <- semanticTokensDocument readNever analyzeCompletion (Map.fromList [("/tmp/main.tnix", content)]) (documentSymbolMessage "/tmp/main.tnix")
+      tokens <- semanticTokensDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", content)]) (documentSymbolMessage "/tmp/main.tnix")
       semanticTokenPayload tokens `shouldSatisfy` (not . null)
   where
     readNever _ = expectationFailure "unexpected file read" >> fail "unexpected file read"

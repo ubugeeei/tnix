@@ -11,8 +11,10 @@ module Session
     codeActionsDocument,
     completionDocument,
     definitionDocument,
+    documentsFromList,
     documentSymbolsDocument,
     hoverDocument,
+    lookupDocumentText,
     referencesDocument,
     renameDocument,
     semanticTokensDocument,
@@ -55,8 +57,31 @@ import System.FilePath ((</>), normalise, takeDirectory)
 import Syntax
 import Type
 
+data CachedDocument = CachedDocument
+  { cachedDocumentText :: Text,
+    cachedDocumentAnalysis :: Maybe (Either String Analysis)
+  }
+  deriving (Eq, Show)
+
 -- | In-memory document cache keyed by normalized file path.
-type Documents = Map FilePath Text
+newtype Documents = Documents {unDocuments :: Map FilePath CachedDocument}
+  deriving (Eq, Show)
+
+instance Semigroup Documents where
+  Documents left <> Documents right = Documents (left <> right)
+
+instance Monoid Documents where
+  mempty = Documents Map.empty
+
+documentsFromList :: [(FilePath, Text)] -> Documents
+documentsFromList =
+  Documents
+    . Map.fromList
+    . map (\(file, text) -> (normalise file, CachedDocument {cachedDocumentText = text, cachedDocumentAnalysis = Nothing}))
+
+lookupDocumentText :: FilePath -> Documents -> Maybe Text
+lookupDocumentText file (Documents docs) =
+  cachedDocumentText <$> Map.lookup (normalise file) docs
 
 data WorkspaceDocument = WorkspaceDocument
   { workspaceDocumentFile :: FilePath,
@@ -105,7 +130,7 @@ updateDocuments readDocument analyze docs msg = do
       textDocument = params >>= field "textDocument"
       file = maybe "" (normalise . uriPath) (textDocument >>= field "uri" >>= asText)
       fullText = textDocument >>= field "text" >>= asText
-      current = Map.lookup file docs
+      current = lookupDocumentText file docs
   contentResult <-
     case fullText of
       Just content -> pure (Right content)
@@ -116,13 +141,13 @@ updateDocuments readDocument analyze docs msg = do
     Left err -> pure (docs, file, Left err)
     Right content -> do
       result <- analyze file content
-      pure (Map.insert file content docs, file, result)
+      pure (insertDocument file content (Just result) docs, file, result)
 
 -- | Remove one document from the cache and return the cleared file path.
 closeDocuments :: Documents -> Value -> (Documents, Maybe FilePath)
 closeDocuments docs msg =
   case normalise <$> documentPath (field "params" msg) of
-    Just file -> (Map.delete file docs, Just file)
+    Just file -> (deleteDocument file docs, Just file)
     Nothing -> (docs, Nothing)
 
 -- | Compute hover information for the requested position.
@@ -147,7 +172,7 @@ hoverDocument readDocument analyze docs msg = do
   case contentResult of
     Left err -> pure (hoverResult (Left err) "" lineNo charNo)
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       pure (hoverResult result content lineNo charNo)
 
 -- | Compute completion items for the requested position.
@@ -167,7 +192,7 @@ completionDocument readDocument analyze docs msg = do
   case contentResult of
     Left err -> pure (completionResult (Left err) "" lineNo charNo)
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       pure (completionResult result content lineNo charNo)
 
 -- | Resolve a definition/declaration jump for the requested position.
@@ -187,7 +212,7 @@ definitionDocument readDocument analyze docs msg = do
   case contentResult of
     Left _ -> pure Null
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       workspace <- loadWorkspaceDocuments readDocument analyze docs file
       builtinsFile <- findBuiltinsFile file
       pure $
@@ -210,7 +235,7 @@ referencesDocument readDocument analyze docs msg = do
   case contentResult of
     Left _ -> pure (toJSON ([] :: [Value]))
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       workspace <- loadWorkspaceDocuments readDocument analyze docs file
       builtinsFile <- findBuiltinsFile file
       pure . toJSON $
@@ -239,7 +264,7 @@ renameDocument readDocument analyze docs msg = do
   case (contentResult, field "params" msg >>= field "newName" >>= asText) of
     (Right content, Just newName)
       | not (Text.null newName) -> do
-          result <- analyze file content
+          result <- loadDocumentAnalysis readDocument analyze docs file
           workspace <- loadWorkspaceDocuments readDocument analyze docs file
           builtinsFile <- findBuiltinsFile file
           pure $
@@ -268,7 +293,7 @@ documentSymbolsDocument readDocument analyze docs msg = do
   case contentResult of
     Left _ -> pure (toJSON ([] :: [Value]))
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       pure (toJSON (map indexedSymbolInformation (documentIndexedSymbols file content result)))
 
 -- | Search symbols across the surrounding workspace.
@@ -307,7 +332,7 @@ codeActionsDocument readDocument analyze docs msg = do
   case contentResult of
     Left _ -> pure (toJSON ([] :: [Value]))
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       workspace <- loadWorkspaceDocuments readDocument analyze docs file
       let diagnostics = diagnosticPayloads msg
           candidates = nub (documentCandidateNames result <> map indexedSymbolName (workspaceIndexedSymbols workspace) <> ["builtins", "import"])
@@ -343,7 +368,7 @@ semanticTokensDocument readDocument analyze docs msg = do
   case contentResult of
     Left _ -> pure (object ["data" .= ([] :: [Int])])
     Right content -> do
-      result <- analyze file content
+      result <- loadDocumentAnalysis readDocument analyze docs file
       pure (object ["data" .= encodeSemanticTokens (semanticTokensFor content result)])
 
 requestDocument ::
@@ -363,7 +388,25 @@ requestDocument readDocument docs msg = do
 
 loadDocumentContent :: (FilePath -> IO (Either String Text)) -> Documents -> FilePath -> IO (Either String Text)
 loadDocumentContent readDocument docs file =
-  maybe (readDocument file) (pure . Right) (Map.lookup file docs)
+  maybe (readDocument file) (pure . Right) (lookupDocumentText file docs)
+
+loadDocumentAnalysis ::
+  (FilePath -> IO (Either String Text)) ->
+  (FilePath -> Text -> IO (Either String Analysis)) ->
+  Documents ->
+  FilePath ->
+  IO (Either String Analysis)
+loadDocumentAnalysis readDocument analyze docs file =
+  case lookupCachedDocument file docs of
+    Just cached ->
+      case cachedDocumentAnalysis cached of
+        Just result -> pure result
+        Nothing -> analyze file (cachedDocumentText cached)
+    Nothing -> do
+      contentResult <- readDocument file
+      case contentResult of
+        Left err -> pure (Left err)
+        Right content -> analyze file content
 
 loadWorkspaceDocuments ::
   (FilePath -> IO (Either String Text)) ->
@@ -376,23 +419,36 @@ loadWorkspaceDocuments readDocument analyze docs currentFile = do
   builtinsFile <- findBuiltinsFile currentFile
   let targets = nub (files <> maybe [] pure builtinsFile)
   forM targets $ \path -> do
-    contentResult <- loadDocumentContent readDocument docs path
-    case contentResult of
-      Left err ->
+    case lookupCachedDocument path docs of
+      Just cached -> do
+        result <-
+          case cachedDocumentAnalysis cached of
+            Just analysisResult -> pure analysisResult
+            Nothing -> analyze path (cachedDocumentText cached)
         pure
           WorkspaceDocument
             { workspaceDocumentFile = path,
-              workspaceDocumentContent = "",
-              workspaceDocumentAnalysis = Left err
-            }
-      Right content -> do
-        result <- analyze path content
-        pure
-          WorkspaceDocument
-            { workspaceDocumentFile = path,
-              workspaceDocumentContent = content,
+              workspaceDocumentContent = cachedDocumentText cached,
               workspaceDocumentAnalysis = result
             }
+      Nothing -> do
+        contentResult <- readDocument path
+        case contentResult of
+          Left err ->
+            pure
+              WorkspaceDocument
+                { workspaceDocumentFile = path,
+                  workspaceDocumentContent = "",
+                  workspaceDocumentAnalysis = Left err
+                }
+          Right content -> do
+            result <- analyze path content
+            pure
+              WorkspaceDocument
+                { workspaceDocumentFile = path,
+                  workspaceDocumentContent = content,
+                  workspaceDocumentAnalysis = result
+                }
 
 workspaceDocumentsForTarget :: [WorkspaceDocument] -> ReferenceTarget -> [WorkspaceDocument]
 workspaceDocumentsForTarget workspace target =
@@ -604,7 +660,7 @@ documentCandidateNames result =
           <> concatMap (map ambientEntryName . ambientEntries) (programAmbient (analysisProgram analysis))
 
 workspaceSeedFile :: Documents -> Maybe FilePath
-workspaceSeedFile docs = fst <$> Map.lookupMin docs
+workspaceSeedFile (Documents docs) = fst <$> Map.lookupMin docs
 
 workspaceFilesFor :: FilePath -> IO [FilePath]
 workspaceFilesFor file
@@ -1044,3 +1100,13 @@ encodeSemanticTokens tokens = snd (foldl step (Nothing, []) (sortOn (\token -> (
 
 locationFromRange :: FilePath -> (Int, Int, Int) -> Value
 locationFromRange file (lineNo, startChar, endChar) = location file lineNo startChar endChar
+
+lookupCachedDocument :: FilePath -> Documents -> Maybe CachedDocument
+lookupCachedDocument file (Documents docs) = Map.lookup (normalise file) docs
+
+insertDocument :: FilePath -> Text -> Maybe (Either String Analysis) -> Documents -> Documents
+insertDocument file content analysis (Documents docs) =
+  Documents (Map.insert (normalise file) CachedDocument {cachedDocumentText = content, cachedDocumentAnalysis = analysis} docs)
+
+deleteDocument :: FilePath -> Documents -> Documents
+deleteDocument file (Documents docs) = Documents (Map.delete (normalise file) docs)
