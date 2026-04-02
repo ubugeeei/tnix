@@ -2,6 +2,7 @@
 
 module Main (main) where
 
+import Control.Exception (bracket)
 import Data.Aeson
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString qualified as BS
@@ -13,7 +14,8 @@ import Data.Text (Text)
 import Driver (Analysis (..))
 import Server
 import System.Directory (getTemporaryDirectory, removeFile)
-import System.IO (Handle, SeekMode (AbsoluteSeek), hClose, hFlush, hSeek, openTempFile)
+import System.IO (Handle, SeekMode (AbsoluteSeek), hClose, hFlush, hSeek, hSetBinaryMode, hWaitForInput, openTempFile)
+import System.Posix.IO (createPipe, fdToHandle)
 import Test.Hspec
 import Type
 
@@ -185,6 +187,18 @@ spec = do
     it "prefers the hovered symbol type and falls back to the root type" $ do
       hoverResult (Right successAnalysis) "box" 0 1
         `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\nString\n```" :: String)]]
+      hoverResult (Right builtinsAnalysis) "builtins.map" 0 2
+        `shouldBe` object
+          [ "contents"
+              .= object
+                [ "kind" .= ("markdown" :: String),
+                  "value"
+                    .= ( "```tnix\n{\n  map :: Int -> String;\n}\n```" :: String
+                       )
+                ]
+          ]
+      hoverResult (Right builtinsAnalysis) "builtins.map" 0 10
+        `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\nInt -> String\n```" :: String)]]
       hoverResult (Right rootOnlyAnalysis) "?" 0 0
         `shouldBe` object ["contents" .= object ["kind" .= ("markdown" :: String), "value" .= ("```tnix\nInt\n```" :: String)]]
       hoverResult (Left "type mismatch") "box" 0 0
@@ -194,6 +208,10 @@ spec = do
     it "offers top-level symbols, builtins, and protocol-safe metadata" $
       completionLabels (completionResult (Right completionAnalysis) "b" 0 1)
         `shouldBe` ["box", "builtins"]
+
+    it "offers root attribute-set fields as top-level completions" $
+      completionLabels (completionResult (Right rootFieldCompletionAnalysis) "in" 0 2)
+        `shouldBe` ["inc"]
 
     it "offers record fields after a dotted access and filters by prefix" $ do
       completionLabels (completionResult (Right completionAnalysis) "box." 0 4)
@@ -205,12 +223,18 @@ spec = do
     it "writes a Content-Length header followed by a JSON body" $
       withTempHandle $ \handle -> do
         send handle (object ["jsonrpc" .= ("2.0" :: String), "method" .= ("initialized" :: String)])
-        hFlush handle
         hSeek handle AbsoluteSeek 0
         payload <- BS.hGetContents handle
         let body = snd (BS.breakSubstring "\r\n\r\n" payload)
         "Content-Length: " `BS.isPrefixOf` payload `shouldBe` True
         decodeStrict' (BS.drop 4 body) `shouldBe` Just (object ["jsonrpc" .= ("2.0" :: String), "method" .= ("initialized" :: String)])
+
+    it "flushes framed messages so stdio clients can read them immediately" $
+      withPipeHandles $ \readHandle writeHandle -> do
+        send writeHandle (object ["jsonrpc" .= ("2.0" :: String), "method" .= ("initialized" :: String)])
+        hWaitForInput readHandle 100 `shouldReturn` True
+        payload <- BS.hGetSome readHandle 4096
+        "Content-Length: " `BS.isPrefixOf` payload `shouldBe` True
 
     it "reads a framed message payload from a handle" $
       withTempHandle $ \handle -> do
@@ -237,6 +261,28 @@ rootOnlyAnalysis =
       analysisBindings = Map.empty,
       analysisAliases = mempty,
       analysisAmbient = mempty
+    }
+
+builtinsAnalysis :: Analysis
+builtinsAnalysis =
+  Analysis
+    { analysisProgram = error "unused in server tests",
+      analysisRoot = Just (Scheme [] (tList tString)),
+      analysisBindings = Map.empty,
+      analysisAliases = mempty,
+      analysisAmbient =
+        Map.fromList
+          [ ( "builtins",
+              Scheme
+                []
+                ( TRecord
+                    ( Map.fromList
+                        [ ("map", TFun Many tInt tString)
+                        ]
+                    )
+                )
+            )
+          ]
     }
 
 completionAnalysis :: Analysis
@@ -278,6 +324,27 @@ completionAnalysis =
           ]
     }
 
+rootFieldCompletionAnalysis :: Analysis
+rootFieldCompletionAnalysis =
+  Analysis
+    { analysisProgram = error "unused in server tests",
+      analysisRoot =
+        Just
+          ( Scheme
+              []
+              ( TRecord
+                  ( Map.fromList
+                      [ ("inc", TFun Many tInt tInt),
+                        ("twice", TFun Many tInt tInt)
+                      ]
+                  )
+              )
+          ),
+      analysisBindings = Map.empty,
+      analysisAliases = mempty,
+      analysisAmbient = mempty
+    }
+
 withTempHandle :: (Handle -> IO a) -> IO a
 withTempHandle action = do
   tmp <- getTemporaryDirectory
@@ -286,6 +353,19 @@ withTempHandle action = do
   hClose handle
   removeFile path
   pure result
+
+withPipeHandles :: (Handle -> Handle -> IO a) -> IO a
+withPipeHandles action =
+  bracket open close (uncurry action)
+  where
+    open = do
+      (readFd, writeFd) <- createPipe
+      readHandle <- fdToHandle readFd
+      writeHandle <- fdToHandle writeFd
+      hSetBinaryMode readHandle True
+      hSetBinaryMode writeHandle True
+      pure (readHandle, writeHandle)
+    close (readHandle, writeHandle) = hClose readHandle >> hClose writeHandle
 
 completionLabels :: Value -> [Text]
 completionLabels value =

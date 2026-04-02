@@ -6,7 +6,7 @@
   "description": "Gradual typing support for Nix via tnix-lsp.",
   "license": "MIT",
   "type": "module",
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "repository": {
     "type": "git",
     "url": "https://github.com/ubugeeei/tnix.git"
@@ -28,7 +28,8 @@
     "vscode": "^1.110.0"
   },
   "activationEvents": [
-    "onLanguage:tnix"
+    "onLanguage:tnix",
+    "onLanguage:nix"
   ],
   "contributes": {
     "languages": [
@@ -38,6 +39,7 @@
           "tnix"
         ],
         "extensions": [
+          ".nix",
           ".tnix",
           ".d.tnix"
         ],
@@ -49,8 +51,8 @@
       "properties": {
         "tnix.server.path": {
           "type": "string",
-          "default": "tnix-lsp",
-          "description": "Path to the tnix language server executable."
+          "default": "",
+          "description": "Path to the tnix language server executable. Leave blank to auto-detect common Nix profile locations before falling back to tnix-lsp on PATH."
         },
         "tnix.server.args": {
           "type": "array",
@@ -69,7 +71,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && ./node_modules/.bin/esbuild src/extension.ts --bundle --platform=node --format=esm --external:vscode --outfile=dist/extension.js",
+    "build": "tsc -p tsconfig.json && ./node_modules/.bin/esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=dist/extension.cjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test dist/*.spec.js",
     "fmt": "prettier --check src package.json tsconfig.json language-configuration.json README.md .vscodeignore",

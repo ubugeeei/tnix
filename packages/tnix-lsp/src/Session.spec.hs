@@ -6,6 +6,7 @@ import Control.Exception (bracket)
 import Data.Aeson (Value (..), object, (.=))
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
+import Data.Either (isLeft)
 import Data.Foldable (toList)
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
@@ -95,6 +96,16 @@ spec = do
       completions <- completionDocument readNever analyzeCompletion (documentsFromList [("/tmp/main.tnix", "box.")]) (completionMessage "/tmp/main.tnix" 0 4)
       completionLabels completions `shouldBe` ["alpha", "beta"]
 
+    it "keeps offering completions from the last successful analysis while the buffer is temporarily invalid" $ do
+      let file = "/tmp/main.tnix"
+          validContent = Text.unlines ["let", "  box = { alpha = 1; beta = \"x\"; };", "in box.alpha"]
+          invalidContent = Text.unlines ["let", "  box = { alpha = 1; beta = \"x\"; };", "in box."]
+      (validDocs, _, _) <- updateDocuments readNever analyzeStrictCompletion mempty (openMessage file validContent)
+      (invalidDocs, _, invalidResult) <- updateDocuments readNever analyzeStrictCompletion validDocs (changeMessage file [object ["text" .= invalidContent]])
+      invalidResult `shouldSatisfy` isLeft
+      completions <- completionDocument readNever analyzeStrictCompletion invalidDocs (completionMessage file 2 7)
+      completionLabels completions `shouldBe` ["alpha", "beta"]
+
     it "returns an empty completion list when loading the document fails" $ do
       completions <- completionDocument (\_ -> pure (Left "boom")) analyzeCompletion mempty (completionMessage "/tmp/main.tnix" 0 0)
       completionLabels completions `shouldBe` []
@@ -167,6 +178,7 @@ spec = do
       | content == "box" = pure (attachProgramFallback file content stringBindingAnalysis)
       | otherwise = pure (attachProgramFallback file content defaultAnalysis)
     analyzeCompletion file content = pure (dynamicAnalysis file content)
+    analyzeStrictCompletion file content = pure (strictDynamicAnalysis file content)
     analyzeFailing _ content = pure (Left ("analysis failed for " <> showText content))
     showText = Text.unpack
 
@@ -185,6 +197,15 @@ attachProgramFallback file content analysis =
 dynamicAnalysis :: FilePath -> Text -> Either String Analysis
 dynamicAnalysis file content = do
   program <- either (const (parseText file "1")) Right (parseText file content)
+  pure
+    completionAnalysis
+      { analysisProgram = program,
+        analysisBindings = inferredBindings content program
+      }
+
+strictDynamicAnalysis :: FilePath -> Text -> Either String Analysis
+strictDynamicAnalysis file content = do
+  program <- parseText file content
   pure
     completionAnalysis
       { analysisProgram = program,

@@ -59,7 +59,8 @@ import Type
 
 data CachedDocument = CachedDocument
   { cachedDocumentText :: Text,
-    cachedDocumentAnalysis :: Maybe (Either String Analysis)
+    cachedDocumentAnalysis :: Maybe (Either String Analysis),
+    cachedDocumentLastGoodAnalysis :: Maybe Analysis
   }
   deriving (Eq, Show)
 
@@ -77,7 +78,16 @@ documentsFromList :: [(FilePath, Text)] -> Documents
 documentsFromList =
   Documents
     . Map.fromList
-    . map (\(file, text) -> (normalise file, CachedDocument {cachedDocumentText = text, cachedDocumentAnalysis = Nothing}))
+    . map
+      ( \(file, text) ->
+          ( normalise file,
+            CachedDocument
+              { cachedDocumentText = text,
+                cachedDocumentAnalysis = Nothing,
+                cachedDocumentLastGoodAnalysis = Nothing
+              }
+          )
+      )
 
 lookupDocumentText :: FilePath -> Documents -> Maybe Text
 lookupDocumentText file (Documents docs) =
@@ -399,7 +409,7 @@ loadDocumentAnalysis ::
 loadDocumentAnalysis readDocument analyze docs file =
   case lookupCachedDocument file docs of
     Just cached ->
-      case cachedDocumentAnalysis cached of
+      case effectiveCachedAnalysis cached of
         Just result -> pure result
         Nothing -> analyze file (cachedDocumentText cached)
     Nothing -> do
@@ -422,7 +432,7 @@ loadWorkspaceDocuments readDocument analyze docs currentFile = do
     case lookupCachedDocument path docs of
       Just cached -> do
         result <-
-          case cachedDocumentAnalysis cached of
+          case effectiveCachedAnalysis cached of
             Just analysisResult -> pure analysisResult
             Nothing -> analyze path (cachedDocumentText cached)
         pure
@@ -1019,7 +1029,7 @@ operatorToken :: Int -> Text -> Maybe SemanticToken
 operatorToken index rest =
   listToMaybe
     [ SemanticToken {semanticTokenLine = 0, semanticTokenStart = index, semanticTokenLength = Text.length operator, semanticTokenType = 7}
-      | operator <- ["::", "->", "%1", ".", "=", "|", "?", ":"],
+      | operator <- ["::", "->", "%1", ".", "=", "+", "|", "?", ":"],
         operator `Text.isPrefixOf` rest
     ]
 
@@ -1106,7 +1116,33 @@ lookupCachedDocument file (Documents docs) = Map.lookup (normalise file) docs
 
 insertDocument :: FilePath -> Text -> Maybe (Either String Analysis) -> Documents -> Documents
 insertDocument file content analysis (Documents docs) =
-  Documents (Map.insert (normalise file) CachedDocument {cachedDocumentText = content, cachedDocumentAnalysis = analysis} docs)
+  Documents
+    ( Map.insert
+        normalizedFile
+        CachedDocument
+          { cachedDocumentText = content,
+            cachedDocumentAnalysis = analysis,
+            cachedDocumentLastGoodAnalysis = newLastGood
+          }
+        docs
+    )
+  where
+    normalizedFile = normalise file
+    previousLastGood = cachedDocumentLastGoodAnalysis =<< Map.lookup normalizedFile docs
+    newLastGood =
+      case analysis of
+        Just (Right result) -> Just result
+        _ -> previousLastGood
+
+effectiveCachedAnalysis :: CachedDocument -> Maybe (Either String Analysis)
+effectiveCachedAnalysis cached =
+  case cachedDocumentAnalysis cached of
+    Just (Right result) -> Just (Right result)
+    Just (Left err) ->
+      case cachedDocumentLastGoodAnalysis cached of
+        Just result -> Just (Right result)
+        Nothing -> Just (Left err)
+    Nothing -> Nothing
 
 deleteDocument :: FilePath -> Documents -> Documents
 deleteDocument file (Documents docs) = Documents (Map.delete (normalise file) docs)

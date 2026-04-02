@@ -18,7 +18,7 @@ import Data.Version (showVersion)
 import Paths_tnix_lsp qualified as PackageInfo
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (hPutStrLn, stderr, stdin, stdout)
+import System.IO (BufferMode (NoBuffering), hPutStrLn, hSetBinaryMode, hSetBuffering, stderr, stdin, stdout)
 import Driver (Analysis (..), analyzeText)
 import Session qualified
 import Server (asText, clearDiagnostics, clientCapabilities, field, notify, publishDiagnostics, publishDiagnosticsWithContent, readMessage, respond)
@@ -43,6 +43,10 @@ handleArgs args
 
 runServer :: IO ()
 runServer = do
+  hSetBinaryMode stdin True
+  hSetBinaryMode stdout True
+  hSetBuffering stdin NoBuffering
+  hSetBuffering stdout NoBuffering
   ref <- newIORef mempty
   forever $ readMessage stdin >>= maybe (pure ()) (handle ref)
 

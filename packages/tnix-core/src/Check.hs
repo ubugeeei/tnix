@@ -144,6 +144,7 @@ inferExpr ctx env = \case
                 outTy <- freshMeta
                 _ <- unify ctx funTy (TFun Many argTy outTy)
                 zonk outTy
+  EAdd left right -> inferAddition ctx env left right
   ELet items body -> do
     (env', _) <- inferLet ctx env items
     inferExpr ctx env' body
@@ -449,6 +450,58 @@ checkCast ctx actual expected = do
         then pure expected
         else lift (Left ("invalid cast: " <> show actual' <> " as " <> show expected'))
 
+inferAddition :: CheckContext -> TypeEnv -> Expr -> Expr -> InferM Type
+inferAddition ctx env left right = do
+  leftTy <- inferExpr ctx env left >>= zonk
+  rightTy <- inferExpr ctx env right >>= zonk
+  let aliases = checkAliases ctx
+      leftResolved = resolveType aliases leftTy
+      rightResolved = resolveType aliases rightTy
+  if leftResolved == tAny || rightResolved == tAny
+    then pure tAny
+    else
+      if leftResolved == tDynamic || rightResolved == tDynamic
+        then pure tDynamic
+        else do
+          let expected = additionTarget leftResolved rightResolved
+          _ <- constrain ctx leftTy expected
+          _ <- constrain ctx rightTy expected
+          zonk expected
+
+additionTarget :: Type -> Type -> Type
+additionTarget left right =
+  case (numericFamily left, numericFamily right) of
+    (Just leftBase, Just rightBase) -> joinNumericFamilies leftBase rightBase
+    (Just knownBase, Nothing)
+      | hasUnresolvedMetas left right -> widenSingleNumericFamily knownBase
+    (Nothing, Just knownBase)
+      | hasUnresolvedMetas left right -> widenSingleNumericFamily knownBase
+    _ -> tNumber
+
+numericFamily :: Type -> Maybe Type
+numericFamily = \case
+  ty
+    | ty == tNat -> Just tNat
+    | ty == tInt -> Just tInt
+    | ty == tFloat -> Just tFloat
+    | ty == tNumber -> Just tNumber
+  TLit (LInt _) -> Just tInt
+  TLit (LFloat _) -> Just tFloat
+  _ -> Nothing
+
+joinNumericFamilies :: Type -> Type -> Type
+joinNumericFamilies left right
+  | left == right = left
+  | left == tNat, right == tInt = tInt
+  | left == tInt, right == tNat = tInt
+  | otherwise = tNumber
+
+widenSingleNumericFamily :: Type -> Type
+widenSingleNumericFamily ty
+  | ty == tNat = tInt
+  | ty == tInt = tInt
+  | otherwise = tNumber
+
 -- | Resolve an import path relative to the current source file.
 --
 -- Absolute paths are normalized but otherwise preserved. Relative paths are
@@ -514,6 +567,7 @@ usageCount target = go
         | name == target -> 0
         | otherwise -> go body
       EApp fun arg -> go fun + go arg
+      EAdd left right -> go left + go right
       ELet items body ->
         let names = [name | Marked _ (LetBinding name _) <- items]
          in if target `elem` names

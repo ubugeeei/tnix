@@ -1,6 +1,6 @@
 # tnix for VS Code
 
-`tnix` adds editor support for `.tnix` and `.d.tnix` files on top of the
+`tnix` adds editor support for `.nix`, `.tnix`, and `.d.tnix` files on top of the
 `tnix-lsp` language server.
 
 ## Features
@@ -32,7 +32,8 @@ tokens are configured.
 ## Settings
 
 - `tnix.server.path`
-  Path to the `tnix-lsp` executable.
+  Path to the `tnix-lsp` executable. Leave this blank to auto-detect common
+  Nix profile locations before falling back to `tnix-lsp` on `PATH`.
 - `tnix.server.args`
   Extra command-line arguments passed to the server.
 - `tnix.server.cwd`
@@ -43,5 +44,6 @@ tokens are configured.
 If the extension activates but features stay unavailable:
 
 - confirm `tnix-lsp --version` works in the same shell environment VS Code inherits
-- set `tnix.server.path` explicitly when the binary is not on the default `PATH`
+- leave `tnix.server.path` blank unless you need to override auto-detection
+- set `tnix.server.path` explicitly when the binary is outside both the default `PATH` and common Nix profile locations
 - set `tnix.server.cwd` to the workspace root when you need `tnix-lsp` to discover ambient declarations from a specific project

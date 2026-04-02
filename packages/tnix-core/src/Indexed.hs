@@ -335,6 +335,7 @@ validateExpr :: Expr -> Either String ()
 validateExpr = \case
   ELambda (PVar _ annotation) body -> traverse_ (validateType "term annotation") annotation *> validateExpr body
   EApp fun arg -> validateExpr fun *> validateExpr arg
+  EAdd left right -> validateExpr left *> validateExpr right
   ELet items body -> traverse_ (validateLetItem . markedValue) items *> validateExpr body
   EAttrSet items -> traverse_ validateAttrItem items
   ESelect base _ -> validateExpr base

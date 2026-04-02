@@ -40,6 +40,19 @@ spec = describe "parseProgram" $ do
             )
         )
 
+  it "parses infix addition inside lambdas and attrsets" $ do
+    program <- expectRight $ parseProgram "main.nix" "{ inc = x: x + 1; }"
+    programExpr program
+      `shouldBe` Just
+        ( plain
+            ( EAttrSet
+                [ AttrField
+                    "inc"
+                    (ELambda (PVar "x" Nothing) (EAdd (EVar "x") (EInt 1)))
+                ]
+            )
+        )
+
   it "parses conditional types with infer binders" $ do
     program <- expectRight $ parseProgram "main.tnix" "type Elem t = t extends List (infer u) ? u : dynamic;"
     programAliases program

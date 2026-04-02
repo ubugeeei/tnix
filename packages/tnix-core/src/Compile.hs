@@ -24,6 +24,7 @@ eraseExpr expr =
   case expr of
     ELambda pattern' body -> ELambda (erasePattern pattern') (eraseExpr body)
     EApp fun arg -> EApp (eraseExpr fun) (eraseExpr arg)
+    EAdd left right -> EAdd (eraseExpr left) (eraseExpr right)
     ELet items body -> ELet (map eraseMarkedLetItem [item | item <- items, isLetBinding (markedValue item)]) (eraseExpr body)
     EAttrSet items -> EAttrSet (map eraseAttrItem items)
     ESelect base fields -> ESelect (eraseExpr base) fields

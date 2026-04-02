@@ -12,6 +12,14 @@ export default defineConfig({
       fmt: {
         command: "vp run fmt:haskell && pnpm --filter tnix fmt",
       },
+      ide: {
+        command: "node --experimental-strip-types ./scripts/install-ide.ts",
+        cache: false,
+      },
+      cli: {
+        command: "node --experimental-strip-types ./scripts/install-cli.ts",
+        cache: false,
+      },
       "build:haskell": {
         command: "cabal build all",
       },
@@ -27,7 +35,7 @@ export default defineConfig({
         cache: false,
       },
       "check:versions": {
-        command: "node ./scripts/check-version-sync.mjs",
+        command: "node --experimental-strip-types ./scripts/check-version-sync.ts",
         cache: false,
       },
       "check:dogfood": {

@@ -45,16 +45,11 @@ jobs:
       - name: Validate release metadata
         run: nix develop --accept-flake-config --command vp run check:versions
 
+      - name: Run flake checks
+        run: nix flake check --accept-flake-config
+
       - name: Build the monorepo
         run: nix develop --accept-flake-config --command vp run build
-
-      - name: Build flake packages
-        run: nix build .#tnix .#tnix-lsp
-
-      - name: Smoke test built binaries
-        run: |
-          ./result/bin/tnix --version
-          ./result-1/bin/tnix-lsp --version
 
       - name: Package the VS Code extension
         run: nix develop --accept-flake-config --command bash -lc 'pnpm --filter tnix build && pnpm --filter tnix exec vsce package --no-dependencies --out /tmp/tnix-ci.vsix'

@@ -1,22 +1,50 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  defaultServerPathCandidates,
   normalizeServerArgs,
   normalizeServerPath,
+  resolveDefaultServerPath,
   resolveRuntimeConfig,
+  resolveInstalledServerPath,
   resolveServerCwd,
   resolveWorkspaceCwd,
 } from "./runtime.js";
 
-test("normalizeServerPath falls back to tnix-lsp for missing or blank values", () => {
-  assert.equal(normalizeServerPath(undefined), "tnix-lsp");
-  assert.equal(normalizeServerPath(""), "tnix-lsp");
-  assert.equal(normalizeServerPath("   "), "tnix-lsp");
+test("normalizeServerPath falls back to the resolved server command for missing or blank values", () => {
+  const resolveDefault = () => "/resolved/tnix-lsp";
+  assert.equal(normalizeServerPath(undefined, resolveDefault), "/resolved/tnix-lsp");
+  assert.equal(normalizeServerPath("", resolveDefault), "/resolved/tnix-lsp");
+  assert.equal(normalizeServerPath("   ", resolveDefault), "/resolved/tnix-lsp");
 });
 
 test("normalizeServerPath preserves explicit executable paths", () => {
-  assert.equal(normalizeServerPath("/nix/store/bin/tnix-lsp"), "/nix/store/bin/tnix-lsp");
-  assert.equal(normalizeServerPath(" tnix-lsp-dev "), "tnix-lsp-dev");
+  const unreachable = () => {
+    throw new Error("should not resolve a fallback for explicit paths");
+  };
+  assert.equal(normalizeServerPath("/nix/store/bin/tnix-lsp", unreachable), "/nix/store/bin/tnix-lsp");
+  assert.equal(normalizeServerPath(" tnix-lsp-dev ", unreachable), "tnix-lsp-dev");
+});
+
+test("defaultServerPathCandidates prioritize common Nix profile locations", () => {
+  assert.deepEqual(defaultServerPathCandidates("/home/alice"), [
+    "/home/alice/.nix-profile/bin/tnix-lsp",
+    "/home/alice/.local/state/nix/profiles/profile/bin/tnix-lsp",
+    "/home/alice/.local/state/nix/profiles/home-manager/home-path/bin/tnix-lsp",
+    "/run/current-system/sw/bin/tnix-lsp",
+  ]);
+});
+
+test("resolveInstalledServerPath returns the first existing Nix profile binary", () => {
+  assert.equal(
+    resolveInstalledServerPath("/home/alice", (path) => path === "/home/alice/.local/state/nix/profiles/profile/bin/tnix-lsp"),
+    "/home/alice/.local/state/nix/profiles/profile/bin/tnix-lsp",
+  );
+  assert.equal(resolveInstalledServerPath("/home/alice", () => false), undefined);
+});
+
+test("resolveDefaultServerPath falls back to tnix-lsp when no profile binary exists", () => {
+  assert.equal(resolveDefaultServerPath("/home/alice", () => false), "tnix-lsp");
 });
 
 test("normalizeServerArgs trims and drops blank argv entries", () => {
@@ -26,12 +54,12 @@ test("normalizeServerArgs trims and drops blank argv entries", () => {
 });
 
 test("resolveRuntimeConfig returns the expected selector and watcher glob", () => {
-  assert.deepEqual(resolveRuntimeConfig(), {
+  assert.deepEqual(resolveRuntimeConfig("tnix-lsp"), {
     command: "tnix-lsp",
     args: [],
     cwd: undefined,
-    documentSelector: [{ language: "tnix" }],
-    watchPattern: "**/*.tnix",
+    documentSelector: [{ language: "tnix" }, { language: "nix" }],
+    watchPattern: "**/*.{nix,tnix}",
   });
 });
 
@@ -40,8 +68,8 @@ test("resolveRuntimeConfig honors args and cwd overrides", () => {
     command: "tnix-lsp-dev",
     args: ["--stdio"],
     cwd: "/tmp/tnix",
-    documentSelector: [{ language: "tnix" }],
-    watchPattern: "**/*.tnix",
+    documentSelector: [{ language: "tnix" }, { language: "nix" }],
+    watchPattern: "**/*.{nix,tnix}",
   });
 });
 

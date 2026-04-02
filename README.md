@@ -100,8 +100,21 @@ For local development, enter the reproducible shell first:
 
 ```bash
 nix develop
+nix flake check --accept-flake-config
 vp run check
+vp cli
+vp ide
 ```
+
+`nix flake check` now exercises the published flake outputs, version metadata,
+smoke-tests the built `tnix` / `tnix-lsp` binaries, runs the Haskell package
+test suites, and validates the dogfood/example corpus with the packaged CLI.
+`vp run check` remains the full workspace verification suite, including editor
+integrations.
+`vp cli` installs the local `tnix` / `tnix-lsp` toolchain into your active Nix
+profile. `vp ide` reuses that toolchain install, packages the VS Code
+extension, and installs the local Zed extension when its support directory is
+available.
 
 ## Bundled Registry Packs
 
@@ -175,6 +188,7 @@ The flake also exports installable packages and runnable apps:
 nix build github:ubugeeei/tnix#tnix
 nix run github:ubugeeei/tnix#tnix -- check ./main.tnix
 nix run github:ubugeeei/tnix#tnix-lsp
+nix flake check github:ubugeeei/tnix --accept-flake-config
 ```
 
 See [RELEASING.md](./RELEASING.md) for the release flow.

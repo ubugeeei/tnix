@@ -134,6 +134,10 @@ spec = describe "compile and emit" $ do
     output <- compileText "main.tnix" "1.5" >>= expectRight
     output `shouldBe` "1.5"
 
+  it "compiles infix addition without rewriting the operator away" $ do
+    output <- compileText "math.nix" "{ inc = x: x + 1; }" >>= expectRight
+    "x + 1" `Text.isInfixOf` output `shouldBe` True
+
   it "emits float literal roots precisely" $ do
     output <- emitText "main.tnix" "1.5" >>= expectRight
     Text.isInfixOf "default :: 1.5;" output `shouldBe` True

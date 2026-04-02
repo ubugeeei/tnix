@@ -60,7 +60,7 @@ ambientEntry = do
 
 -- | Parse any expression form supported by the prototype.
 expressionParser :: Parser Expr
-expressionParser = choice [ifParser, letParser, try lambdaParser, castParser]
+expressionParser = choice [ifParser, letParser, try lambdaParser, additionParser]
 
 -- | Parse a Nix-style conditional expression.
 ifParser :: Parser Expr
@@ -116,6 +116,13 @@ castParser = do
   casts <- many (reserved "as" *> typeParser)
   pure (foldl ECast base casts)
 
+-- | Parse left-associated infix addition.
+--
+-- Addition binds looser than application/selection and explicit casts so
+-- expressions such as `f x + 1` keep the expected Nix shape.
+additionParser :: Parser Expr
+additionParser = chainLeft1 castParser (EAdd <$ symbol "+")
+
 -- | Parse left-associated application chains.
 applicationParser :: Parser Expr
 applicationParser = foldl1 EApp <$> some postfixParser
@@ -164,7 +171,8 @@ attrParser = try inheritParser <|> fieldParser
 listParser :: Parser Expr
 listParser = EList <$> brackets (many listItem)
   where
-    listItem = choice [ifParser, letParser, try lambdaParser, listCastParser]
+    listItem = choice [ifParser, letParser, try lambdaParser, listAdditionParser]
+    listAdditionParser = chainLeft1 listCastParser (EAdd <$ symbol "+")
     listCastParser = do
       base <- postfixParser
       casts <- many (reserved "as" *> typeParser)
@@ -181,3 +189,15 @@ patternParser = parens typed <|> (PVar <$> identifier <*> pure Nothing)
 
 markCurrent :: Parser a -> Parser (Marked a)
 markCurrent parser = Marked <$> directiveForCurrentLine <*> parser
+
+chainLeft1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainLeft1 item op = do
+  first <- item
+  rest first
+  where
+    rest acc =
+      (do
+        f <- op
+        next <- item
+        rest (f acc next))
+        <|> pure acc

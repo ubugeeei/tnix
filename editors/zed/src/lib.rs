@@ -1,3 +1,5 @@
+use std::env;
+use std::path::Path;
 use zed_extension_api::{register_extension, settings::LspSettings, Command, Extension, LanguageServerId, Result, Worktree};
 
 /// Zed extension entry point for tnix.
@@ -37,6 +39,33 @@ fn build_command(command: String, args: Vec<String>, env: Vec<(String, String)>)
     Command { command, args, env }
 }
 
+fn default_binary_candidates(home: Option<&str>) -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    if let Some(home) = home {
+        candidates.push(format!("{home}/.nix-profile/bin/tnix-lsp"));
+        candidates.push(format!("{home}/.local/state/nix/profiles/profile/bin/tnix-lsp"));
+        candidates.push(format!("{home}/.local/state/nix/profiles/home-manager/home-path/bin/tnix-lsp"));
+    }
+
+    candidates.push("/run/current-system/sw/bin/tnix-lsp".to_string());
+    candidates
+}
+
+fn resolve_default_binary_with<F>(home: Option<&str>, exists: F) -> Option<String>
+where
+    F: Fn(&str) -> bool,
+{
+    default_binary_candidates(home)
+        .into_iter()
+        .find(|candidate| exists(candidate))
+}
+
+fn resolve_default_binary() -> Option<String> {
+    let home = env::var("HOME").ok();
+    resolve_default_binary_with(home.as_deref(), |candidate| Path::new(candidate).exists())
+}
+
 impl Extension for Tnix {
     fn new() -> Self {
         Self {}
@@ -62,7 +91,10 @@ impl Extension for Tnix {
             }
         }
 
-        let path = worktree.which("tnix-lsp").ok_or_else(|| "tnix-lsp must be installed and available in $PATH.".to_string())?;
+        let path = worktree
+            .which("tnix-lsp")
+            .or_else(|| resolve_default_binary())
+            .ok_or_else(|| "tnix-lsp must be installed and available in $PATH.".to_string())?;
         Ok(build_command(path, vec![], env))
     }
 }
@@ -71,7 +103,7 @@ register_extension!(Tnix);
 
 #[cfg(test)]
 mod tests {
-    use super::{build_command, normalize_binary_arguments, normalize_binary_path};
+    use super::{build_command, default_binary_candidates, normalize_binary_arguments, normalize_binary_path, resolve_default_binary_with};
 
     #[test]
     fn normalize_binary_path_drops_blank_values() {
@@ -110,5 +142,28 @@ mod tests {
         assert_eq!(command.command, "tnix-lsp");
         assert_eq!(command.args, vec!["--stdio".to_string()]);
         assert_eq!(command.env, vec![("TNIX_ENV".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn default_binary_candidates_prioritize_common_nix_profiles() {
+        assert_eq!(
+            default_binary_candidates(Some("/home/alice")),
+            vec![
+                "/home/alice/.nix-profile/bin/tnix-lsp".to_string(),
+                "/home/alice/.local/state/nix/profiles/profile/bin/tnix-lsp".to_string(),
+                "/home/alice/.local/state/nix/profiles/home-manager/home-path/bin/tnix-lsp".to_string(),
+                "/run/current-system/sw/bin/tnix-lsp".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_default_binary_with_returns_first_existing_candidate() {
+        let resolved = resolve_default_binary_with(Some("/home/alice"), |candidate| {
+            candidate == "/home/alice/.local/state/nix/profiles/profile/bin/tnix-lsp"
+        });
+
+        assert_eq!(resolved, Some("/home/alice/.local/state/nix/profiles/profile/bin/tnix-lsp".to_string()));
+        assert_eq!(resolve_default_binary_with(Some("/home/alice"), |_| false), None);
     }
 }

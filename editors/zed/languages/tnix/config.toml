@@ -1,6 +1,6 @@
 name = "tnix"
 grammar = "nix"
-path_suffixes = ["tnix"]
+path_suffixes = ["nix", "tnix"]
 line_comments = ["# "]
 brackets = [
   { start = "(", end = ")", close = true, newline = true },

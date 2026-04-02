@@ -53,7 +53,7 @@ import Driver (Analysis (..), lookupSymbolType)
 import Numeric (showHex)
 import Pretty (renderScheme)
 import Subtyping (lookupRecordField, resolveType)
-import System.IO (Handle, hIsEOF)
+import System.IO (Handle, hFlush, hIsEOF)
 import Type (Multiplicity (..), Name, Scheme (..), Type (..), TypeAlias, schemeFromAnnotation, tDynamic, tPath)
 
 field :: Text -> Value -> Maybe Value
@@ -212,8 +212,30 @@ hoverResult result content lineNo charNo =
       case result of
         Left err -> T.pack err
         Right analysis ->
-          let symbol = wordAt lineNo charNo content
-           in maybe (maybe "No type information." renderScheme (analysisRoot analysis)) renderScheme (lookupSymbolType analysis symbol)
+          maybe
+            (maybe "No type information." renderScheme (analysisRoot analysis))
+            renderScheme
+            (hoveredSchemeAt analysis lineNo charNo content)
+
+hoveredSchemeAt :: Analysis -> Int -> Int -> Text -> Maybe Scheme
+hoveredSchemeAt analysis lineNo charNo content =
+  case hoveredPathAt lineNo charNo content of
+    [] -> analysisRoot analysis
+    [name] -> resolveSymbol analysis name
+    path -> schemeFromAnnotation <$> resolveChainType analysis path
+
+hoveredPathAt :: Int -> Int -> Text -> [Text]
+hoveredPathAt lineNo charNo content =
+  case drop lineNo (T.lines content) of
+    line : _ ->
+      let (beforeCursor, afterCursor) = T.splitAt charNo line
+          prefix = T.reverse (T.takeWhile completionChar (T.reverse beforeCursor))
+          suffix = T.takeWhile completionChar afterCursor
+          fragment = prefix <> suffix
+          parts = filter (not . T.null) (T.splitOn "." fragment)
+          segmentCount = min (length parts) (T.count "." prefix + 1)
+       in take segmentCount parts
+    _ -> []
 
 diagnosticWithContent :: Text -> String -> Value
 diagnosticWithContent content err =
@@ -313,11 +335,22 @@ topLevelCandidates :: Analysis -> [(Text, Scheme)]
 topLevelCandidates analysis =
   sortOn fst . dedupeByLabel $
     builtinsCandidate
+      <> rootFieldCandidates
       <> defaultCandidate
       <> importCandidate
       <> Map.toList (analysisBindings analysis)
   where
     builtinsCandidate = maybe [] (\scheme -> [("builtins", scheme)]) (Map.lookup "builtins" (analysisAmbient analysis))
+    rootFieldCandidates =
+      case analysisRoot analysis of
+        Just scheme ->
+          case resolveType (analysisAliases analysis) (schemeType scheme) of
+            TRecord fields ->
+              [ (name, schemeFromAnnotation fieldTy)
+                | (name, fieldTy) <- Map.toList fields
+              ]
+            _ -> []
+        Nothing -> []
     defaultCandidate = maybe [] (\scheme -> [("default", scheme)]) (analysisRoot analysis)
     importCandidate = [("import", Scheme [] (TFun Many tPath tDynamic))]
 
@@ -492,6 +525,7 @@ send handle payload = do
   let body = encode payload
   B8.hPutStr handle ("Content-Length: " <> B8.pack (show (LBS.length body)) <> "\r\n\r\n")
   LBS.hPutStr handle body
+  hFlush handle
 
 respond :: Handle -> Value -> Value -> IO ()
 respond handle request result =

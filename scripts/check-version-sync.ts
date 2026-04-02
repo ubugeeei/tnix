@@ -9,10 +9,10 @@ const cabalPaths = [
   new URL("../packages/tnix-lsp/tnix-lsp.cabal", import.meta.url),
 ];
 
-const errors = [];
+const errors: string[] = [];
 
-const rootPackage = JSON.parse(await readFile(rootPackagePath, "utf8"));
-const vscodePackage = JSON.parse(await readFile(vscodePackagePath, "utf8"));
+const rootPackage = JSON.parse(await readFile(rootPackagePath, "utf8")) as { version: string };
+const vscodePackage = JSON.parse(await readFile(vscodePackagePath, "utf8")) as { version: string };
 const changelog = await readFile(changelogPath, "utf8");
 const cabalFiles = await Promise.all(cabalPaths.map((path) => readFile(path, "utf8")));
 

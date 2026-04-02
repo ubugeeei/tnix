@@ -244,6 +244,7 @@ exprAnnotations = \case
   EPath _ -> []
   ELambda (PVar _ annotation) body -> maybe [] pure annotation <> exprAnnotations body
   EApp fun arg -> exprAnnotations fun <> exprAnnotations arg
+  EAdd left right -> exprAnnotations left <> exprAnnotations right
   ELet items body -> foldMap (letItemAnnotations . markedValue) items <> exprAnnotations body
   EAttrSet items -> foldMap attrAnnotations items
   ESelect base _ -> exprAnnotations base

@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 export type RuntimeConfig = {
   command: string;
   args: string[];
@@ -6,15 +10,41 @@ export type RuntimeConfig = {
   watchPattern: string;
 };
 
+export function defaultServerPathCandidates(homePath: string = homedir()): string[] {
+  return [
+    join(homePath, ".nix-profile", "bin", "tnix-lsp"),
+    join(homePath, ".local", "state", "nix", "profiles", "profile", "bin", "tnix-lsp"),
+    join(homePath, ".local", "state", "nix", "profiles", "home-manager", "home-path", "bin", "tnix-lsp"),
+    "/run/current-system/sw/bin/tnix-lsp",
+  ];
+}
+
+export function resolveInstalledServerPath(
+  homePath: string = homedir(),
+  exists: (path: string) => boolean = existsSync,
+): string | undefined {
+  return defaultServerPathCandidates(homePath).find((candidate) => exists(candidate));
+}
+
+export function resolveDefaultServerPath(
+  homePath: string = homedir(),
+  exists: (path: string) => boolean = existsSync,
+): string {
+  return resolveInstalledServerPath(homePath, exists) ?? "tnix-lsp";
+}
+
 /**
  * Normalize the configured server path into a safe executable command.
  *
  * Blank or whitespace-only values fall back to the bundled default so the
  * extension can recover from partially edited settings.
  */
-export function normalizeServerPath(serverPath?: string): string {
+export function normalizeServerPath(
+  serverPath?: string,
+  resolveDefault: () => string = () => resolveDefaultServerPath(),
+): string {
   const trimmed = serverPath?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : "tnix-lsp";
+  return trimmed && trimmed.length > 0 ? trimmed : resolveDefault();
 }
 
 /**
@@ -62,7 +92,7 @@ export function resolveRuntimeConfig(
     command: normalizeServerPath(serverPath),
     args: normalizeServerArgs(serverArgs),
     cwd: resolveServerCwd(configuredCwd, workspacePaths),
-    documentSelector: [{ language: "tnix" }],
-    watchPattern: "**/*.tnix",
+    documentSelector: [{ language: "tnix" }, { language: "nix" }],
+    watchPattern: "**/*.{nix,tnix}",
   };
 }

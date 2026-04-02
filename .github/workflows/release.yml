@@ -48,7 +48,7 @@ jobs:
         run: nix develop --accept-flake-config --command vp run check:versions
 
       - name: Build release binaries
-        run: nix develop --accept-flake-config --command bash ./scripts/package-release.sh "${{ github.ref_name }}" "${{ matrix.label }}" "${{ matrix.archive }}" "${{ matrix.sha }}"
+        run: nix develop --accept-flake-config --command node --experimental-strip-types ./scripts/package-release.ts "${{ github.ref_name }}" "${{ matrix.label }}" "${{ matrix.archive }}" "${{ matrix.sha }}"
 
       - name: Smoke test packaged binaries
         run: |

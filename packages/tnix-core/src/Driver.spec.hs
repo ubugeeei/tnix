@@ -26,6 +26,16 @@ spec = describe "analysis" $ do
     analysis <- analyzeText "main.tnix" "1.5" >>= expectRight
     analysisRoot analysis `shouldBe` Just (Scheme [] (TLit (LFloat 1.5)))
 
+  it "infers int addition inside legacy nix lambdas" $ do
+    analysis <- analyzeText "math.nix" "{ inc = x: x + 1; }" >>= expectRight
+    analysisRoot analysis
+      `shouldBe`
+        Just
+          ( Scheme
+              []
+              (TRecord (Map.fromList [("inc", TFun One tInt tInt)]))
+          )
+
   it "preserves declared binding schemes while allowing gradual root inference" $ do
     analysis <-
       analyzeText
