@@ -1,0 +1,18 @@
+type TnixProjectPath = Path | String;
+
+type TnixProjectConfig = {
+  name :: String;
+  sourceDir :: TnixProjectPath;
+  entry :: TnixProjectPath;
+  declarationDir :: TnixProjectPath;
+  buildDir :: TnixProjectPath;
+  generatedDeclarationDir :: TnixProjectPath;
+  entries :: List TnixProjectPath;
+  include :: List TnixProjectPath;
+  exclude :: List TnixProjectPath;
+  builtins :: Bool;
+};
+
+declare "./tnix.config.tnix" {
+  default :: TnixProjectConfig;
+};

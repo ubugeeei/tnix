@@ -1,0 +1,4 @@
+let
+  grid :: Matrix 2 2 Int;
+  grid = [[1 2] [3 4]];
+in grid

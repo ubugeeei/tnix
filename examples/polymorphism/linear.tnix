@@ -1,0 +1,4 @@
+let
+  consume :: Int %1 -> Int;
+  consume = x: x;
+in consume

@@ -1,0 +1,6 @@
+type Element t = t extends List (infer a) ? a : dynamic;
+
+let
+  headValue :: Element (List Int);
+  headValue = builtins.head [1 2 3];
+in headValue

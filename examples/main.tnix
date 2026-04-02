@@ -1,0 +1,11 @@
+let
+  greeting :: String;
+  greeting = "hello from tnix";
+  names :: List String;
+  names = ["tnix" "nixpkgs" "home-manager"];
+  packages = builtins.map (name: { inherit name; }) names;
+in {
+  inherit greeting packages;
+  first = builtins.head names;
+  count = builtins.length names;
+}

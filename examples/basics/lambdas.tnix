@@ -1,0 +1,4 @@
+let
+  passthrough :: Int -> Int;
+  passthrough = (x :: Int): x;
+in passthrough 1

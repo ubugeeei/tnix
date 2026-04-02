@@ -27,7 +27,7 @@ import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
 import Parser (parseProgram)
 import Syntax
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory, makeAbsolute)
 import System.FilePath (addTrailingPathSeparator, (</>), isAbsolute, makeRelative, normalise, replaceExtension, takeBaseName, takeDirectory)
 
 data ProjectConfig = ProjectConfig
@@ -87,7 +87,7 @@ configFileName :: FilePath
 configFileName = "tnix.config.tnix"
 
 resolveRoot :: Maybe FilePath -> IO FilePath
-resolveRoot = maybe getCurrentDirectory pure
+resolveRoot = maybe getCurrentDirectory makeAbsolute
 
 defaultConfig :: FilePath -> ProjectConfig
 defaultConfig root =

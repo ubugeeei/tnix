@@ -1,0 +1,4 @@
+let
+  timeout :: Unit "ms" (Range 0 5000 Nat);
+  timeout = 2500;
+in timeout

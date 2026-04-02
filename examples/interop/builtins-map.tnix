@@ -1,0 +1,4 @@
+let
+  formatNames :: List { name :: String; } -> List String;
+  formatNames = xs: builtins.map ((pkg :: { name :: String; }): pkg.name) xs;
+in formatNames [{ name = "tnix"; } { name = "nixpkgs"; }]

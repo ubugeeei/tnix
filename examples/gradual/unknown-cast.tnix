@@ -1,0 +1,4 @@
+let
+  value :: unknown;
+  value = 1;
+in value as Int

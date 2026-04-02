@@ -93,6 +93,7 @@ Quick verification:
 tnix --version
 tnix-lsp --version
 tnix check ./examples/main.tnix
+tnix check-project ./examples
 ```
 
 For local development, enter the reproducible shell first:
@@ -131,6 +132,16 @@ declare "./treefmt-nix.nix" { default :: TreefmtNixFlake; };
 
 The workspace packs assume they live under `registry/workspace/` so their
 relative `declare` targets resolve back to the project root.
+
+## Example Catalog
+
+The repository ships a larger sample set under [`examples/`](./examples/README.md).
+It includes basic language features, gradual typing examples, indexed container
+samples, and legacy interop fixtures that can be checked with one command:
+
+```bash
+tnix check-project ./examples
+```
 
 See [CHANGELOG.md](./CHANGELOG.md) for the release history.
 

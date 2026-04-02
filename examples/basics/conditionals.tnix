@@ -1,0 +1,4 @@
+let
+  enabled :: Bool;
+  enabled = true;
+in if enabled then { status = "enabled"; } else { status = "disabled"; }

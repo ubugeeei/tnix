@@ -1,0 +1,4 @@
+let
+  xs :: Vec (Range 2 4 Nat) Int;
+  xs = [1 2 3];
+in xs

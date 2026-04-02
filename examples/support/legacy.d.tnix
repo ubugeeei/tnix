@@ -1,0 +1,8 @@
+declare "../legacy/default.nix" {
+  default :: { name :: String; version :: String; };
+};
+
+declare "../legacy/math.nix" {
+  inc :: Int -> Int;
+  twice :: (Int -> Int) -> Int -> Int;
+};

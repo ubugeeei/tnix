@@ -1,0 +1,6 @@
+declare "builtins" {
+  concatStringsSep :: String -> List String -> String;
+  head :: forall a. List a -> a;
+  length :: forall a. List a -> Int;
+  map :: forall a b. (a -> b) -> List a -> List b;
+};

@@ -1,0 +1,19 @@
+{
+  name = "tnix-examples";
+  sourceDir = ./basics;
+  entry = ./main.tnix;
+  declarationDir = ./support;
+  buildDir = ./dist;
+  generatedDeclarationDir = ./dist/types;
+  entries = [
+    ./main.tnix
+    ./basics
+    ./gradual
+    ./polymorphism
+    ./indexed
+    ./interop
+  ];
+  include = [];
+  exclude = [];
+  builtins = false;
+}

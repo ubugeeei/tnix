@@ -1,0 +1,6 @@
+type Option a = { _tag :: "some"; value :: a; } | { _tag :: "none"; };
+
+let
+  current :: Option Int;
+  current = { _tag = "some"; value = 1; };
+in current

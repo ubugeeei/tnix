@@ -1,0 +1,6 @@
+let
+  math = import ../legacy/math.nix;
+in {
+  next = math.inc 1;
+  again = math.twice math.inc 1;
+}

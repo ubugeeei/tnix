@@ -1,0 +1,7 @@
+type Id f = f;
+type Apply f a = f a;
+
+let
+  names :: Apply (Id List) String;
+  names = ["tnix" "zed"];
+in names

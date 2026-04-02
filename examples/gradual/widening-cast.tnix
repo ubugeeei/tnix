@@ -1,0 +1,3 @@
+let
+  raw = 1;
+in raw as Number

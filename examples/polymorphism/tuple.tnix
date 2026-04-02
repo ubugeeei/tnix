@@ -1,0 +1,4 @@
+let
+  pair :: Tuple [Int String];
+  pair = [1 "tnix"];
+in pair

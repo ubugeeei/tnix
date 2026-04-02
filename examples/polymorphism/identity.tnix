@@ -1,0 +1,7 @@
+let
+  id :: forall a. a -> a;
+  id = x: x;
+in {
+  int = id 1;
+  text = id "tnix";
+}

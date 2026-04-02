@@ -1,0 +1,5 @@
+declare "../legacy/default.nix" {
+  default :: { name :: String; version :: String; };
+};
+
+(import ../legacy/default.nix).version

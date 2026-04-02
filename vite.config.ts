@@ -7,7 +7,7 @@ export default defineConfig({
         command: "vp run build:haskell && pnpm --filter tnix build && vp run build:zed",
       },
       check: {
-        command: "vp run check:versions && vp run check:haskell && vp run test:haskell && vp run check:dogfood && pnpm --filter tnix check && pnpm --filter tnix test && vp run check:zed && vp run test:zed && vp run check:neovim",
+        command: "vp run check:versions && vp run check:haskell && vp run test:haskell && vp run check:dogfood && vp run check:examples && pnpm --filter tnix check && pnpm --filter tnix test && vp run check:zed && vp run test:zed && vp run check:neovim",
       },
       fmt: {
         command: "vp run fmt:haskell && pnpm --filter tnix fmt",
@@ -32,6 +32,10 @@ export default defineConfig({
       },
       "check:dogfood": {
         command: "cabal run tnix -- check ./dogfood/flake-surface.tnix",
+        cache: false,
+      },
+      "check:examples": {
+        command: "cabal run tnix -- check-project ./examples --format json",
         cache: false,
       },
       "build:zed": {

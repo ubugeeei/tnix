@@ -1,0 +1,4 @@
+let
+  xs :: Vec 3 Int;
+  xs = [1 2 3];
+in xs

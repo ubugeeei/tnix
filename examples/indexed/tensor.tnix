@@ -1,0 +1,4 @@
+let
+  cube :: Tensor [2 (Range 1 2 Nat) 1] Int;
+  cube = [[[1] [2]] [[3] [4]]];
+in cube

@@ -1,0 +1,6 @@
+let
+  id :: forall a. a -> a;
+  id = x: x;
+  greeting :: String;
+  greeting = id "hello";
+in greeting
