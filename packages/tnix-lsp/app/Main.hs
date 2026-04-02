@@ -74,6 +74,12 @@ handle ref msg = case field "method" msg >>= asText of
   Just "textDocument/completion" -> completion ref msg >>= respond stdout msg
   Just "textDocument/definition" -> definition ref msg >>= respond stdout msg
   Just "textDocument/declaration" -> definition ref msg >>= respond stdout msg
+  Just "textDocument/references" -> references ref msg >>= respond stdout msg
+  Just "textDocument/rename" -> rename ref msg >>= respond stdout msg
+  Just "textDocument/documentSymbol" -> documentSymbols ref msg >>= respond stdout msg
+  Just "workspace/symbol" -> workspaceSymbols ref msg >>= respond stdout msg
+  Just "textDocument/codeAction" -> codeActions ref msg >>= respond stdout msg
+  Just "textDocument/semanticTokens/full" -> semanticTokens ref msg >>= respond stdout msg
   _ -> pure ()
 
 -- | Update the in-memory copy of a document and re-run analysis.
@@ -119,6 +125,36 @@ definition :: IORef Session.Documents -> Value -> IO Value
 definition ref msg = do
   docs <- readIORef ref
   Session.definitionDocument readFileSafe analyzeText docs msg
+
+references :: IORef Session.Documents -> Value -> IO Value
+references ref msg = do
+  docs <- readIORef ref
+  Session.referencesDocument readFileSafe analyzeText docs msg
+
+rename :: IORef Session.Documents -> Value -> IO Value
+rename ref msg = do
+  docs <- readIORef ref
+  Session.renameDocument readFileSafe analyzeText docs msg
+
+documentSymbols :: IORef Session.Documents -> Value -> IO Value
+documentSymbols ref msg = do
+  docs <- readIORef ref
+  Session.documentSymbolsDocument readFileSafe analyzeText docs msg
+
+workspaceSymbols :: IORef Session.Documents -> Value -> IO Value
+workspaceSymbols ref msg = do
+  docs <- readIORef ref
+  Session.workspaceSymbolsDocument readFileSafe analyzeText docs msg
+
+codeActions :: IORef Session.Documents -> Value -> IO Value
+codeActions ref msg = do
+  docs <- readIORef ref
+  Session.codeActionsDocument readFileSafe analyzeText docs msg
+
+semanticTokens :: IORef Session.Documents -> Value -> IO Value
+semanticTokens ref msg = do
+  docs <- readIORef ref
+  Session.semanticTokensDocument readFileSafe analyzeText docs msg
 
 readFileSafe :: FilePath -> IO (Either String Text)
 readFileSafe file = do

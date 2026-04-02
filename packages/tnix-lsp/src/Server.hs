@@ -14,6 +14,9 @@ module Server
     diag,
     documentPath,
     field,
+    findDefinitionRange,
+    findFieldRange,
+    findWordRange,
     firstChange,
     hoverResult,
     location,
@@ -74,6 +77,29 @@ clientCapabilities =
             "completionProvider" .= object ["triggerCharacters" .= ["." :: Text]],
             "definitionProvider" .= True,
             "declarationProvider" .= True,
+            "referencesProvider" .= True,
+            "renameProvider" .= True,
+            "documentSymbolProvider" .= True,
+            "workspaceSymbolProvider" .= True,
+            "codeActionProvider" .= True,
+            "semanticTokensProvider"
+              .= object
+                [ "legend"
+                    .= object
+                      [ "tokenTypes"
+                          .= [ "keyword" :: Text,
+                               "type",
+                               "function",
+                               "variable",
+                               "property",
+                               "string",
+                               "number",
+                               "operator"
+                             ],
+                        "tokenModifiers" .= ([] :: [Text])
+                      ],
+                  "full" .= True
+                ],
             "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]
           ]
     ]

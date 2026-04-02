@@ -23,7 +23,7 @@ main = hspec spec
 spec :: Spec
 spec = do
   describe "clientCapabilities" $
-    it "advertises hover, completion, definition, and incremental sync support" $
+    it "advertises editor features needed for an interactive tnix workflow" $
       clientCapabilities
         `shouldBe` object
           [ "capabilities"
@@ -32,6 +32,29 @@ spec = do
                   "completionProvider" .= object ["triggerCharacters" .= ["." :: String]],
                   "definitionProvider" .= True,
                   "declarationProvider" .= True,
+                  "referencesProvider" .= True,
+                  "renameProvider" .= True,
+                  "documentSymbolProvider" .= True,
+                  "workspaceSymbolProvider" .= True,
+                  "codeActionProvider" .= True,
+                  "semanticTokensProvider"
+                    .= object
+                      [ "legend"
+                          .= object
+                            [ "tokenTypes"
+                                .= [ "keyword" :: String,
+                                     "type",
+                                     "function",
+                                     "variable",
+                                     "property",
+                                     "string",
+                                     "number",
+                                     "operator"
+                                   ],
+                              "tokenModifiers" .= ([] :: [String])
+                            ],
+                        "full" .= True
+                      ],
                   "textDocumentSync" .= object ["openClose" .= True, "change" .= (2 :: Int)]
                 ]
           ]
