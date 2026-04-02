@@ -5,9 +5,9 @@ module Main (main) where
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
 import Test.Hspec
-import Driver (compileText, emitText, parseText)
+import Driver (compileText, emitFileTo, emitText, parseText)
 import Syntax
-import TestSupport (expectLeftContaining, expectRight, source)
+import TestSupport (expectLeftContaining, expectRight, source, withTempTree)
 import Type
 
 main :: IO ()
@@ -349,5 +349,13 @@ spec = describe "compile and emit" $ do
   it "emits declarations relative to the source basename" $ do
     output <- emitText "nested/app/main.tnix" "{ value = 1; }" >>= expectRight
     Text.isInfixOf "declare \"./main.nix\"" output `shouldBe` True
+
+  it "rewrites declaration targets relative to an explicit output path" $
+    withTempTree
+      [("src/main.tnix", "1")]
+      ( \root -> do
+          output <- emitFileTo (root <> "/src/main.tnix") (root <> "/types/generated/main.d.tnix") >>= expectRight
+          Text.isInfixOf "declare \"../../src/main.nix\"" output `shouldBe` True
+      )
   where
     parseDecl = parseText

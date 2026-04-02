@@ -1,28 +1,34 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
--- | `tnix.config.tnix` loading and project scaffolding helpers.
+-- | `tnix.config.tnix` loading, source discovery, and scaffolding helpers.
 --
--- The config format intentionally stays tiny and executable-free: it is a root
+-- The config format intentionally stays small and executable-free: it is a root
 -- attribute set parsed with the ordinary tnix frontend, then decoded into a
--- concrete scaffold plan.
+-- concrete project plan.
 module Project
-  ( initProject,
+  ( ProjectConfig (..),
+    ProjectSource (..),
+    discoverProjectSources,
+    initProject,
+    loadProject,
+    projectBuildOutputPath,
+    projectDeclarationOutputPath,
     scaffoldProject,
   )
 where
 
 import Control.Exception (IOException, try)
 import Control.Monad (forM)
-import Data.List (group, partition, sort)
+import Data.List (group, isPrefixOf, nub, partition, sort)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
 import Parser (parseProgram)
 import Syntax
-import System.Directory (createDirectoryIfMissing, doesFileExist, getCurrentDirectory)
-import System.FilePath ((</>), isAbsolute, makeRelative, takeBaseName, takeDirectory)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, listDirectory)
+import System.FilePath (addTrailingPathSeparator, (</>), isAbsolute, makeRelative, normalise, replaceExtension, takeBaseName, takeDirectory)
 
 data ProjectConfig = ProjectConfig
   { configRoot :: FilePath,
@@ -30,8 +36,20 @@ data ProjectConfig = ProjectConfig
     configSourceDir :: FilePath,
     configEntry :: FilePath,
     configDeclarationDir :: FilePath,
+    configBuildDir :: FilePath,
+    configGeneratedDeclarationDir :: FilePath,
+    configEntries :: [FilePath],
+    configInclude :: [FilePath],
+    configExclude :: [FilePath],
     configBuiltins :: Bool
   }
+  deriving (Eq, Show)
+
+data ProjectSource = ProjectSource
+  { projectSourcePath :: FilePath,
+    projectSourceRelative :: FilePath
+  }
+  deriving (Eq, Show)
 
 data PlannedFile = PlannedFile
   { plannedPath :: FilePath,
@@ -60,6 +78,11 @@ scaffoldProject target = do
   root <- resolveRoot target
   loadProjectConfig (root </> configFileName) >>= either (pure . Left) scaffoldFromConfig
 
+loadProject :: Maybe FilePath -> IO (Either String ProjectConfig)
+loadProject target = do
+  root <- resolveRoot target
+  loadProjectConfig (root </> configFileName)
+
 configFileName :: FilePath
 configFileName = "tnix.config.tnix"
 
@@ -72,12 +95,19 @@ defaultConfig root =
       sourceDir = root </> "src"
       entry = sourceDir </> "main.tnix"
       declarationDir = root </> "types"
+      buildDir = root </> "dist"
+      generatedDeclarationDir = buildDir </> "types"
    in ProjectConfig
         { configRoot = root,
           configName = if Text.null name then "tnix-app" else name,
           configSourceDir = sourceDir,
           configEntry = entry,
           configDeclarationDir = declarationDir,
+          configBuildDir = buildDir,
+          configGeneratedDeclarationDir = generatedDeclarationDir,
+          configEntries = [],
+          configInclude = [],
+          configExclude = [],
           configBuiltins = True
         }
 
@@ -89,11 +119,20 @@ renderConfig config =
       "  sourceDir = " <> prettyPath (configSourceDir config) <> ";",
       "  entry = " <> prettyPath (configEntry config) <> ";",
       "  declarationDir = " <> prettyPath (configDeclarationDir config) <> ";",
+      "  buildDir = " <> prettyPath (configBuildDir config) <> ";",
+      "  generatedDeclarationDir = " <> prettyPath (configGeneratedDeclarationDir config) <> ";",
+      "  entries = " <> prettyPathList (configEntries config) <> ";",
+      "  include = " <> prettyPathList (configInclude config) <> ";",
+      "  exclude = " <> prettyPathList (configExclude config) <> ";",
       "  builtins = " <> boolLiteral (configBuiltins config) <> ";",
       "}"
     ]
   where
     prettyPath path = Text.pack (relativizeFromRoot (configRoot config) path)
+    prettyPathList paths =
+      case paths of
+        [] -> "[]"
+        _ -> "[ " <> Text.intercalate " " (map prettyPath paths) <> " ]"
 
 scaffoldFromConfig :: ProjectConfig -> IO (Either String Text)
 scaffoldFromConfig config = do
@@ -125,6 +164,78 @@ materializeFile planned = do
       TextIO.writeFile (plannedPath planned) (plannedContent planned)
       pure (True, plannedPath planned)
 
+discoverProjectSources :: ProjectConfig -> IO [ProjectSource]
+discoverProjectSources config = do
+  explicit <- expandConfiguredPaths (configRoot config) (configEntries config)
+  discovered <-
+    if null explicit
+      then walkTnixFiles (configSourceDir config)
+      else pure explicit
+  let filtered =
+        [ path
+          | path <- nub (sort (map normalise discovered)),
+            isSourceFile path,
+            passesInclude path,
+            not (isExcluded path)
+        ]
+  pure (map toProjectSource filtered)
+  where
+    includePaths = map (resolveConfigPath (configRoot config)) (configInclude config)
+    excludePaths = map (resolveConfigPath (configRoot config)) (configExclude config)
+    isSourceFile path =
+      ".tnix" `Text.isSuffixOf` Text.pack path
+        && not (".d.tnix" `Text.isSuffixOf` Text.pack path)
+    passesInclude path =
+      null includePaths || any (matchesConfiguredPath path) includePaths
+    isExcluded path =
+      any (matchesConfiguredPath path) excludePaths
+    toProjectSource path =
+      let relative =
+            if isPathPrefixOf (configSourceDir config) path
+              then makeRelative (configSourceDir config) path
+              else makeRelative (configRoot config) path
+       in ProjectSource
+            { projectSourcePath = path,
+              projectSourceRelative = relative
+            }
+
+projectBuildOutputPath :: ProjectConfig -> ProjectSource -> FilePath
+projectBuildOutputPath config source =
+  configBuildDir config </> replaceExtension (projectSourceRelative source) "nix"
+
+projectDeclarationOutputPath :: ProjectConfig -> ProjectSource -> FilePath
+projectDeclarationOutputPath config source =
+  configGeneratedDeclarationDir config </> replaceExtension (projectSourceRelative source) "d.tnix"
+
+expandConfiguredPaths :: FilePath -> [FilePath] -> IO [FilePath]
+expandConfiguredPaths root =
+  fmap concat . traverse expandOne
+  where
+    expandOne raw = do
+      let path = normalise (resolveConfigPath root raw)
+      isDir <- doesDirectoryExist path
+      if isDir
+        then walkTnixFiles path
+        else pure [path]
+
+walkTnixFiles :: FilePath -> IO [FilePath]
+walkTnixFiles root = do
+  exists <- doesDirectoryExist root
+  if not exists
+    then pure []
+    else do
+      names <- sort <$> listDirectory root
+      fmap concat $
+        traverse
+          ( \name -> do
+              let path = root </> name
+              isDir <- doesDirectoryExist path
+              if isDir
+                then walkTnixFiles path
+                else pure [path]
+          )
+          names
+
 loadProjectConfig :: FilePath -> IO (Either String ProjectConfig)
 loadProjectConfig configPath = do
   exists <- doesFileExist configPath
@@ -143,6 +254,11 @@ loadProjectConfig configPath = do
         sourceDir <- maybe (Right (root </> "src")) (decodePathField root "sourceDir") (Map.lookup "sourceDir" fields)
         entry <- maybe (Right (sourceDir </> "main.tnix")) (decodePathField root "entry") (Map.lookup "entry" fields)
         declarationDir <- maybe (Right (root </> "types")) (decodePathField root "declarationDir") (Map.lookup "declarationDir" fields)
+        buildDir <- maybe (Right (root </> "dist")) (decodePathField root "buildDir") (Map.lookup "buildDir" fields)
+        generatedDeclarationDir <- maybe (Right (buildDir </> "types")) (decodePathField root "generatedDeclarationDir") (Map.lookup "generatedDeclarationDir" fields)
+        entries <- maybe (Right []) (decodePathListField root "entries") (Map.lookup "entries" fields)
+        include <- maybe (Right []) (decodePathListField root "include") (Map.lookup "include" fields)
+        exclude <- maybe (Right []) (decodePathListField root "exclude") (Map.lookup "exclude" fields)
         builtins <- maybe (Right True) (decodeBoolField "builtins") (Map.lookup "builtins" fields)
         pure
           ProjectConfig
@@ -151,6 +267,11 @@ loadProjectConfig configPath = do
               configSourceDir = sourceDir,
               configEntry = entry,
               configDeclarationDir = declarationDir,
+              configBuildDir = buildDir,
+              configGeneratedDeclarationDir = generatedDeclarationDir,
+              configEntries = entries,
+              configInclude = include,
+              configExclude = exclude,
               configBuiltins = builtins
             }
 
@@ -184,10 +305,20 @@ decodePathField root name = \case
   EString text -> Right (resolveConfigPath root (Text.unpack text))
   other -> Left ("expected path-like field for " <> Text.unpack name <> ", but got " <> show other)
 
+decodePathListField :: FilePath -> Text -> Expr -> Either String [FilePath]
+decodePathListField root name = \case
+  EList items -> traverse decodeItem items
+  other -> Left ("expected list of path-like values for " <> Text.unpack name <> ", but got " <> show other)
+  where
+    decodeItem = \case
+      EPath path -> Right (resolveConfigPath root path)
+      EString text -> Right (resolveConfigPath root (Text.unpack text))
+      item -> Left ("expected path-like item in " <> Text.unpack name <> ", but got " <> show item)
+
 resolveConfigPath :: FilePath -> FilePath -> FilePath
 resolveConfigPath root path
-  | isAbsolute path = path
-  | otherwise = root </> dropDotSlash path
+  | isAbsolute path = normalise path
+  | otherwise = normalise (root </> dropDotSlash path)
 
 dropDotSlash :: FilePath -> FilePath
 dropDotSlash path =
@@ -197,6 +328,19 @@ dropDotSlash path =
 
 relativizeFromRoot :: FilePath -> FilePath -> FilePath
 relativizeFromRoot root path = "./" <> makeRelative root path
+
+isPathPrefixOf :: FilePath -> FilePath -> Bool
+isPathPrefixOf parent child =
+  let normalizedParent = normalise parent
+      normalizedChild = normalise child
+   in normalizedParent == normalizedChild
+        || addTrailingPathSeparator normalizedParent `isPrefixOf` addTrailingPathSeparator normalizedChild
+
+matchesConfiguredPath :: FilePath -> FilePath -> Bool
+matchesConfiguredPath candidate configured =
+  let normalizedCandidate = normalise candidate
+      normalizedConfigured = normalise configured
+   in normalizedCandidate == normalizedConfigured || isPathPrefixOf normalizedConfigured normalizedCandidate
 
 quoted :: Text -> Text
 quoted text = "\"" <> text <> "\""
@@ -224,6 +368,11 @@ renderConfigDeclarationFile _ =
       "  sourceDir :: TnixProjectPath;",
       "  entry :: TnixProjectPath;",
       "  declarationDir :: TnixProjectPath;",
+      "  buildDir :: TnixProjectPath;",
+      "  generatedDeclarationDir :: TnixProjectPath;",
+      "  entries :: List TnixProjectPath;",
+      "  include :: List TnixProjectPath;",
+      "  exclude :: List TnixProjectPath;",
       "  builtins :: Bool;",
       "};",
       "",

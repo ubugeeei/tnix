@@ -17,7 +17,9 @@ library
     , Project
   hs-source-dirs: src
   build-depends:
-      base >=4.19 && <5
+      aeson
+    , base >=4.19 && <5
+    , bytestring
     , containers
     , directory
     , filepath
@@ -32,7 +34,9 @@ executable tnix
   other-modules:
       Paths_tnix_cli
   build-depends:
-      base >=4.19 && <5
+      aeson
+    , base >=4.19 && <5
+    , bytestring
     , containers
     , optparse-applicative
     , text
@@ -48,7 +52,9 @@ test-suite tnix-cli-spec
       Cli
     , Project
   build-depends:
-      base >=4.19 && <5
+      aeson
+    , base >=4.19 && <5
+    , bytestring
     , containers
     , directory
     , filepath

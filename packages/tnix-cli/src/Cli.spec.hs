@@ -10,7 +10,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as TextIO
 import Driver (Analysis (..))
-import Cli (Command (..), commandOutputPath, commandParser, executeCommand, renderAnalysis, writeOutput)
+import Cli (Command (..), OutputFormat (..), commandOutputPath, commandParser, executeCommand, renderAnalysis, writeOutput)
 import Options.Applicative (ParserPrefs, ParserResult (..), defaultPrefs, execParserPure, getParseResult, info, renderFailure)
 import System.Directory (createDirectory, createDirectoryIfMissing, doesFileExist, getTemporaryDirectory, removeFile, removePathForcibly)
 import System.FilePath (takeDirectory, (</>))
@@ -28,11 +28,15 @@ spec = do
       parse ["compile", "main.tnix", "-o", "dist/main.nix"]
         `shouldBe` Just (Compile "main.tnix" (Just "dist/main.nix"))
 
-    it "parses check, emit, init, and scaffold commands" $ do
-      parse ["check", "main.tnix"] `shouldBe` Just (Check "main.tnix")
+    it "parses check, emit, init, scaffold, and project commands" $ do
+      parse ["check", "main.tnix"] `shouldBe` Just (Check "main.tnix" TextFormat)
+      parse ["check", "main.tnix", "--format", "json"] `shouldBe` Just (Check "main.tnix" JsonFormat)
       parse ["emit", "main.tnix"] `shouldBe` Just (Emit "main.tnix" Nothing)
       parse ["init"] `shouldBe` Just (Init Nothing)
       parse ["scaffold", "demo"] `shouldBe` Just (Scaffold (Just "demo"))
+      parse ["check-project"] `shouldBe` Just (CheckProject Nothing TextFormat)
+      parse ["build", "demo", "--format", "json"] `shouldBe` Just (BuildProject (Just "demo") JsonFormat)
+      parse ["emit-project", "demo"] `shouldBe` Just (EmitProject (Just "demo") TextFormat)
 
     it "reports an error for missing subcommands" $ do
       case parserResult [] of
@@ -58,7 +62,7 @@ spec = do
     it "tracks explicit destinations only for write commands" $ do
       commandOutputPath (Compile "main.tnix" (Just "dist/main.nix")) `shouldBe` Just "dist/main.nix"
       commandOutputPath (Emit "main.tnix" (Just "types/main.d.tnix")) `shouldBe` Just "types/main.d.tnix"
-      commandOutputPath (Check "main.tnix") `shouldBe` Nothing
+      commandOutputPath (Check "main.tnix" TextFormat) `shouldBe` Nothing
       commandOutputPath (Init Nothing) `shouldBe` Nothing
       commandOutputPath (Scaffold Nothing) `shouldBe` Nothing
 
@@ -91,8 +95,17 @@ spec = do
           )
         ]
         ( \root -> do
-            output <- executeCommand (Check (root <> "/main.tnix")) >>= expectRight
+            output <- executeCommand (Check (root <> "/main.tnix") TextFormat) >>= expectRight
             Text.lines output `shouldBe` ["root: forall t0. t0 -> t0", "id :: forall a. a -> a"]
+        )
+
+    it "renders json check output for analyzed files" $
+      withTempTree
+        [("main.tnix", "1")]
+        ( \root -> do
+            output <- executeCommand (Check (root <> "/main.tnix") JsonFormat) >>= expectRight
+            Text.isInfixOf "\"success\":true" output `shouldBe` True
+            Text.isInfixOf "\"root\":\"1\"" output `shouldBe` True
         )
 
     it "emits declaration files through the driver end-to-end" $
@@ -110,7 +123,7 @@ spec = do
             >>= (`expectLeftContaining` "declaration-only")
 
     it "surfaces missing source files as user-facing errors" $
-      executeCommand (Check "/tmp/tnix-cli-missing/main.tnix")
+      executeCommand (Check "/tmp/tnix-cli-missing/main.tnix" TextFormat)
         >>= (`expectLeftContaining` "failed to read")
 
     it "initializes a project with tnix.config.tnix and starter files" $
@@ -177,6 +190,73 @@ spec = do
         >> withTempTree
           [("tnix.config.tnix", "{ builtins = 1; }")]
           (\root -> executeCommand (Scaffold (Just root)) >>= (`expectLeftContaining` "expected Bool for builtins"))
+
+    it "checks every discovered source file in a project" $
+      withTempTree
+        [ ( "tnix.config.tnix",
+            source
+              [ "{",
+                "  name = \"demo\";",
+                "  sourceDir = ./src;",
+                "  exclude = [ ./src/skip ];",
+                "}"
+              ]
+          ),
+          ("src/main.tnix", "1"),
+          ("src/lib/util.tnix", "\"ok\""),
+          ("src/skip/ignored.tnix", "missing")
+        ]
+        $ \root -> do
+          output <- executeCommand (CheckProject (Just root) TextFormat) >>= expectRight
+          Text.isInfixOf "src/main.tnix" output `shouldBe` True
+          Text.isInfixOf "src/lib/util.tnix" output `shouldBe` True
+          Text.isInfixOf "ignored.tnix" output `shouldBe` False
+
+    it "builds a project into compiled nix and generated declarations" $
+      withTempTree
+        [ ( "tnix.config.tnix",
+            source
+              [ "{",
+                "  name = \"demo\";",
+                "  sourceDir = ./src;",
+                "  buildDir = ./artifacts;",
+                "  generatedDeclarationDir = ./artifacts/types;",
+                "}"
+              ]
+          ),
+          ( "src/main.tnix",
+            source
+              [ "let",
+                "  value :: Int;",
+                "  value = 1;",
+                "in value"
+              ]
+          )
+        ]
+        $ \root -> do
+          output <- executeCommand (BuildProject (Just root) TextFormat) >>= expectRight
+          doesFileExist (root </> "artifacts/main.nix") `shouldReturn` True
+          doesFileExist (root </> "artifacts/types/main.d.tnix") `shouldReturn` True
+          declaration <- TextIO.readFile (root </> "artifacts/types/main.d.tnix")
+          Text.isInfixOf "declare \"../main.nix\"" declaration `shouldBe` True
+          Text.isInfixOf "artifacts/main.nix" output `shouldBe` True
+
+    it "emits project declarations as json" $
+      withTempTree
+        [ ( "tnix.config.tnix",
+            source
+              [ "{",
+                "  name = \"demo\";",
+                "  sourceDir = ./src;",
+                "}"
+              ]
+          ),
+          ("src/main.tnix", "{ value = 1; }")
+        ]
+        $ \root -> do
+          output <- executeCommand (EmitProject (Just root) JsonFormat) >>= expectRight
+          Text.isInfixOf "\"action\":\"emit-project\"" output `shouldBe` True
+          Text.isInfixOf "\"success\":true" output `shouldBe` True
 
   describe "writeOutput" $
     it "creates parent directories before writing files" $

@@ -12,8 +12,12 @@ module Driver
     analyzeText,
     compileFile,
     compileText,
+    emitFileAs,
     emitFile,
+    emitFileTo,
     emitText,
+    emitTextAs,
+    emitTextTo,
     lookupSymbolType,
     parseText,
   )
@@ -29,7 +33,7 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
-import System.FilePath ((</>), isAbsolute, joinPath, normalise, splitDirectories, takeDirectory)
+import System.FilePath ((</>), isAbsolute, joinPath, normalise, replaceExtension, splitDirectories, takeDirectory)
 import Alias
 import Check
 import Compile
@@ -103,9 +107,28 @@ emitText path input = do
     root <- maybe (Left "cannot emit declarations from a declaration-only file") Right (analysisRoot analysis)
     pure (emitDeclarationFile path (analysisProgram analysis) root)
 
+emitTextTo :: FilePath -> FilePath -> Text -> IO (Either String Text)
+emitTextTo source declarationPath input = do
+  let runtimeTarget = replaceExtension source "nix"
+  emitTextAs source runtimeTarget declarationPath input
+
+emitTextAs :: FilePath -> FilePath -> FilePath -> Text -> IO (Either String Text)
+emitTextAs source runtimeTarget declarationPath input = do
+  checked <- analyzeText source input
+  pure $ do
+    analysis <- checked
+    root <- maybe (Left "cannot emit declarations from a declaration-only file") Right (analysisRoot analysis)
+    pure (emitDeclarationFileFor runtimeTarget declarationPath (analysisProgram analysis) root)
+
 -- | Emit a declaration file for a source file on disk.
 emitFile :: FilePath -> IO (Either String Text)
 emitFile path = readTextFile path >>= either (pure . Left) (emitText path)
+
+emitFileTo :: FilePath -> FilePath -> IO (Either String Text)
+emitFileTo source declarationPath = readTextFile source >>= either (pure . Left) (emitTextTo source declarationPath)
+
+emitFileAs :: FilePath -> FilePath -> FilePath -> IO (Either String Text)
+emitFileAs source runtimeTarget declarationPath = readTextFile source >>= either (pure . Left) (emitTextAs source runtimeTarget declarationPath)
 
 -- | Look up a top-level symbol type exposed by an analysis result.
 --
