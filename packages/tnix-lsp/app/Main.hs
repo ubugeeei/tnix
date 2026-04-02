@@ -15,8 +15,11 @@ import Data.IORef
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text.IO qualified as TIO
-import System.Exit (exitSuccess)
-import System.IO (stdin, stdout)
+import Data.Version (showVersion)
+import Paths_tnix_lsp qualified as PackageInfo
+import System.Environment (getArgs)
+import System.Exit (exitFailure, exitSuccess)
+import System.IO (hPutStrLn, stderr, stdin, stdout)
 import Driver (Analysis (..), analyzeText)
 import Session qualified
 import Server (asText, clearDiagnostics, clientCapabilities, field, notify, publishDiagnostics, publishDiagnosticsWithContent, readMessage, respond)
@@ -24,8 +27,39 @@ import Server (asText, clearDiagnostics, clientCapabilities, field, notify, publ
 -- | Start the stdio event loop and keep the latest document text in memory.
 main :: IO ()
 main = do
+  args <- getArgs
+  handleArgs args
+
+handleArgs :: [String] -> IO ()
+handleArgs args
+  | any (`elem` ["--help", "-h"]) args = putStrLn helpText
+  | any (`elem` ["--version", "-v"]) args = putStrLn versionText
+  | null filteredArgs = runServer
+  | otherwise = do
+      hPutStrLn stderr ("tnix-lsp: unsupported arguments: " <> unwords filteredArgs)
+      hPutStrLn stderr "Use --stdio, --version, or --help."
+      exitFailure
+  where
+    filteredArgs = filter (/= "--stdio") args
+
+runServer :: IO ()
+runServer = do
   ref <- newIORef mempty
   forever $ readMessage stdin >>= maybe (pure ()) (handle ref)
+
+helpText :: String
+helpText =
+  unlines
+    [ "tnix-lsp",
+      "",
+      "Usage:",
+      "  tnix-lsp [--stdio]",
+      "  tnix-lsp --version",
+      "  tnix-lsp --help"
+    ]
+
+versionText :: String
+versionText = "tnix-lsp " <> showVersion PackageInfo.version
 
 -- | Dispatch one incoming JSON-RPC message.
 handle :: IORef Session.Documents -> Value -> IO ()

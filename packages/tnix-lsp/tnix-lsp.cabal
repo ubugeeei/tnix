@@ -5,7 +5,9 @@ build-type:         Simple
 license:            MIT
 license-file:       LICENSE
 author:             tnix contributors
-maintainer:         tnix@example.com
+maintainer:         tnix contributors
+homepage:           https://github.com/ubugeeei/tnix
+bug-reports:        https://github.com/ubugeeei/tnix/issues
 category:           Language
 synopsis:           Minimal LSP server for tnix
 
@@ -28,6 +30,8 @@ library
 executable tnix-lsp
   main-is: Main.hs
   hs-source-dirs: app
+  other-modules:
+      Paths_tnix_lsp
   build-depends:
       aeson
     , base >=4.19 && <5
@@ -78,3 +82,7 @@ test-suite tnix-lsp-session-spec
     , tnix-core
     , tnix-lsp
   default-language: GHC2021
+
+source-repository head
+  type: git
+  location: https://github.com/ubugeeei/tnix.git

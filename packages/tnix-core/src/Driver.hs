@@ -20,6 +20,7 @@ module Driver
 where
 
 import Control.Applicative ((<|>))
+import Control.Exception (IOException, try)
 import Control.Monad (foldM, forM)
 import Data.List (group, isSuffixOf, sort)
 import Data.Map.Strict (Map)
@@ -81,7 +82,7 @@ analyzeText path input = do
 
 -- | Read and analyze a file from disk.
 analyzeFile :: FilePath -> IO (Either String Analysis)
-analyzeFile path = Text.readFile path >>= analyzeText path
+analyzeFile path = readTextFile path >>= either (pure . Left) (analyzeText path)
 
 -- | Compile an in-memory `.tnix` buffer into `.nix` text.
 compileText :: FilePath -> Text -> IO (Either String Text)
@@ -91,7 +92,7 @@ compileText path input = do
 
 -- | Compile a file from disk.
 compileFile :: FilePath -> IO (Either String Text)
-compileFile path = Text.readFile path >>= compileText path
+compileFile path = readTextFile path >>= either (pure . Left) (compileText path)
 
 -- | Emit a declaration file for an in-memory source buffer.
 emitText :: FilePath -> Text -> IO (Either String Text)
@@ -104,7 +105,7 @@ emitText path input = do
 
 -- | Emit a declaration file for a source file on disk.
 emitFile :: FilePath -> IO (Either String Text)
-emitFile path = Text.readFile path >>= emitText path
+emitFile path = readTextFile path >>= either (pure . Left) (emitText path)
 
 -- | Look up a top-level symbol type exposed by an analysis result.
 --
@@ -139,8 +140,9 @@ loadSupport path = do
 
 loadDeclarationFile :: FilePath -> IO (Either String World)
 loadDeclarationFile path = do
-  input <- Text.readFile path
+  inputResult <- readTextFile path
   pure $ do
+    input <- inputResult
     program <- firstError ("failed to load declaration file " <> path <> ": ") (parseText path input)
     case markedValue <$> programExpr program of
       Just _ -> Left ("declaration files must not contain executable expressions: " <> path)
@@ -240,6 +242,14 @@ duplicateNames = foldr step [] . group . sort
 
 firstError :: String -> Either String a -> Either String a
 firstError prefix = either (Left . (prefix <>)) Right
+
+readTextFile :: FilePath -> IO (Either String Text)
+readTextFile path = do
+  result <- try @IOException (Text.readFile path)
+  pure $
+    case result of
+      Left err -> Left ("failed to read " <> path <> ": " <> show err)
+      Right input -> Right input
 
 collapseParentSegments :: FilePath -> FilePath
 collapseParentSegments = joinPath . foldl step [] . splitDirectories . normalise

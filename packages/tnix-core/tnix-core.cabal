@@ -5,7 +5,9 @@ build-type:         Simple
 license:            MIT
 license-file:       LICENSE
 author:             tnix contributors
-maintainer:         tnix@example.com
+maintainer:         tnix contributors
+homepage:           https://github.com/ubugeeei/tnix
+bug-reports:        https://github.com/ubugeeei/tnix/issues
 category:           Language
 synopsis:           Core parser, type checker, compiler, and emitter for tnix
 
@@ -107,3 +109,7 @@ test-suite tnix-registry-spec
   import: spec-defaults
   type: exitcode-stdio-1.0
   main-is: Registry.spec.hs
+
+source-repository head
+  type: git
+  location: https://github.com/ubugeeei/tnix.git

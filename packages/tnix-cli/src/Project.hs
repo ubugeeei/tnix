@@ -12,6 +12,7 @@ module Project
   )
 where
 
+import Control.Exception (IOException, try)
 import Control.Monad (forM)
 import Data.List (group, partition, sort)
 import Data.Map.Strict qualified as Map
@@ -130,8 +131,9 @@ loadProjectConfig configPath = do
   if not exists
     then pure (Left ("missing tnix.config.tnix in " <> takeDirectory configPath))
     else do
-      input <- TextIO.readFile configPath
+      inputResult <- readTextFileSafe configPath
       pure $ do
+        input <- inputResult
         program <- firstTextError ("failed to parse " <> configPath <> ": ") (parseProgram configPath input)
         expr <- maybe (Left "tnix.config.tnix must contain a root attribute set") (Right . markedValue) (programExpr program)
         fields <- decodeAttrSet expr
@@ -243,6 +245,14 @@ builtinsTemplate =
 
 firstTextError :: String -> Either Text a -> Either String a
 firstTextError prefix = either (Left . (prefix <>) . Text.unpack) Right
+
+readTextFileSafe :: FilePath -> IO (Either String Text)
+readTextFileSafe path = do
+  result <- try @IOException (TextIO.readFile path)
+  pure $
+    case result of
+      Left err -> Left ("failed to read " <> path <> ": " <> show err)
+      Right input -> Right input
 
 duplicateNames :: Ord a => [a] -> [a]
 duplicateNames = foldr step [] . group . sort

@@ -109,6 +109,10 @@ spec = do
           executeCommand (Compile (root <> "/types.d.tnix") Nothing)
             >>= (`expectLeftContaining` "declaration-only")
 
+    it "surfaces missing source files as user-facing errors" $
+      executeCommand (Check "/tmp/tnix-cli-missing/main.tnix")
+        >>= (`expectLeftContaining` "failed to read")
+
     it "initializes a project with tnix.config.tnix and starter files" $
       withTempTree [] $ \root -> do
         output <- executeCommand (Init (Just root)) >>= expectRight

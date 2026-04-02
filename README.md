@@ -75,6 +75,33 @@ After compilation, type information is erased and only ordinary Nix code remains
 - shipped declaration files for `builtins`, `flake.nix`, and `tnix.config.tnix`
 - bundled declaration packs under `registry/` for workspace files and popular Nix ecosystem surfaces
 
+## Installation
+
+Install the CLI and language server from the published flake:
+
+```bash
+nix profile install github:ubugeeei/tnix#tnix
+nix profile install github:ubugeeei/tnix#tnix-lsp
+```
+
+Or download the prebuilt archives attached to each GitHub release and place
+`tnix` / `tnix-lsp` somewhere on your `PATH`.
+
+Quick verification:
+
+```bash
+tnix --version
+tnix-lsp --version
+tnix check ./examples/main.tnix
+```
+
+For local development, enter the reproducible shell first:
+
+```bash
+nix develop
+vp run check
+```
+
 ## Bundled Registry Packs
 
 The repository includes reusable `.d.tnix` packs under `registry/` so projects

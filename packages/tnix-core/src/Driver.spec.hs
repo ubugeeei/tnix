@@ -4,7 +4,7 @@ module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Test.Hspec
-import Driver (Analysis (..), analyzeFile, analyzeText)
+import Driver (Analysis (..), analyzeFile, analyzeText, compileFile, emitFile)
 import Pretty (renderScheme)
 import TestSupport (expectLeftContaining, expectRight, source, withTempTree)
 import Type
@@ -61,6 +61,11 @@ spec = describe "analysis" $ do
 
   it "reports unbound names" $
     analyzeText "main.tnix" "missing" >>= (`expectLeftContaining` "unbound name")
+
+  it "reports filesystem read failures as ordinary errors" $ do
+    analyzeFile "/tmp/tnix-does-not-exist/main.tnix" >>= (`expectLeftContaining` "failed to read")
+    compileFile "/tmp/tnix-does-not-exist/main.tnix" >>= (`expectLeftContaining` "failed to read")
+    emitFile "/tmp/tnix-does-not-exist/main.tnix" >>= (`expectLeftContaining` "failed to read")
 
   it "infers exact vector roots while preserving precise element unions" $ do
     analysis <- analyzeText "main.tnix" "[1 2]" >>= expectRight

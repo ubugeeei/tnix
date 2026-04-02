@@ -44,8 +44,19 @@ jobs:
       - name: Prime the Cabal package index
         run: nix develop --accept-flake-config --command cabal update
 
+      - name: Validate release metadata
+        run: nix develop --accept-flake-config --command vp run check:versions
+
       - name: Build release binaries
         run: nix develop --accept-flake-config --command bash ./scripts/package-release.sh "${{ github.ref_name }}" "${{ matrix.label }}" "${{ matrix.archive }}" "${{ matrix.sha }}"
+
+      - name: Smoke test packaged binaries
+        run: |
+          stage_dir="$(mktemp -d)"
+          tar -C "$stage_dir" -xzf "${{ matrix.archive }}"
+          archive_root="$(find "$stage_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          "$archive_root/bin/tnix" --version
+          "$archive_root/bin/tnix-lsp" --version
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4
@@ -70,6 +81,9 @@ jobs:
 
       - name: Install workspace dependencies
         run: nix develop --accept-flake-config --command pnpm install --frozen-lockfile
+
+      - name: Validate release metadata
+        run: nix develop --accept-flake-config --command vp run check:versions
 
       - name: Package VS Code extension
         run: nix develop --accept-flake-config --command bash -lc 'pnpm --filter tnix build && pnpm --filter tnix exec vsce package --no-dependencies --out ../../tnix-vscode-${{ github.ref_name }}.vsix'

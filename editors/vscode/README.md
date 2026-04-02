@@ -19,6 +19,12 @@ GitHub release artifact or via the Nix flake:
 nix profile install github:ubugeeei/tnix#tnix-lsp
 ```
 
+Verify the server is reachable before opening VS Code:
+
+```bash
+tnix-lsp --version
+```
+
 The packaged `.vsix` is attached to each GitHub release. Tagged releases can
 also publish directly to VS Code Marketplace and Open VSX when the repository
 tokens are configured.
@@ -31,3 +37,11 @@ tokens are configured.
   Extra command-line arguments passed to the server.
 - `tnix.server.cwd`
   Optional working directory used to start the server.
+
+## Troubleshooting
+
+If the extension activates but features stay unavailable:
+
+- confirm `tnix-lsp --version` works in the same shell environment VS Code inherits
+- set `tnix.server.path` explicitly when the binary is not on the default `PATH`
+- set `tnix.server.cwd` to the workspace root when you need `tnix-lsp` to discover ambient declarations from a specific project

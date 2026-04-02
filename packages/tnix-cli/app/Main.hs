@@ -9,15 +9,24 @@
 module Main (main) where
 
 import Data.Text.IO qualified as Text
+import Data.Version (showVersion)
 import Cli qualified
 import Options.Applicative
+import Paths_tnix_cli qualified as PackageInfo
 import System.Exit (die)
 
 -- | Parse arguments and execute the requested command.
 main :: IO ()
 main = execParser opts >>= run
   where
-    opts = info (Cli.commandParser <**> helper) (fullDesc <> progDesc "Compile, check, and emit tnix files")
+    opts =
+      info
+        (Cli.commandParser <**> helper <**> versionOption)
+        (fullDesc <> progDesc "Compile, check, emit, and scaffold tnix projects")
+    versionOption =
+      infoOption
+        ("tnix " <> showVersion PackageInfo.version)
+        (long "version" <> short 'v' <> help "Show the tnix version")
 
 -- | Execute one CLI command.
 run :: Cli.Command -> IO ()
