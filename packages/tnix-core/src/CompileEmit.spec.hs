@@ -9,7 +9,7 @@ import System.FilePath ((</>))
 import Test.Hspec
 import Driver (compileFile, compileText, emitFile, emitFileTo, emitText, parseText)
 import Syntax
-import TestSupport (expectLeftContaining, expectRight, fixturePathCandidates, source, withTempTree)
+import TestSupport (expectLeftContaining, expectRight, fixturePathCandidates, source, withCopiedFixtureTree, withTempTree)
 import Type
 
 main :: IO ()
@@ -382,12 +382,13 @@ goldenFixtureSpec name =
         [ "packages/tnix-core/fixtures/compile-emit/" <> name,
           "fixtures/compile-emit/" <> name
         ]
-    let sourceFile = fixtureRoot </> "main.tnix"
-        expectedNixFile = fixtureRoot </> "expected.nix"
-        expectedDeclFile = fixtureRoot </> "expected.d.tnix"
-    compiled <- Text.stripEnd <$> (compileFile sourceFile >>= expectRight)
-    expectedNix <- Text.stripEnd <$> TextIO.readFile expectedNixFile
-    emitted <- Text.stripEnd <$> (emitFile sourceFile >>= expectRight)
-    expectedDecl <- Text.stripEnd <$> TextIO.readFile expectedDeclFile
-    compiled `shouldBe` expectedNix
-    emitted `shouldBe` expectedDecl
+    withCopiedFixtureTree fixtureRoot $ \isolatedRoot -> do
+      let sourceFile = isolatedRoot </> "main.tnix"
+          expectedNixFile = isolatedRoot </> "expected.nix"
+          expectedDeclFile = isolatedRoot </> "expected.d.tnix"
+      compiled <- Text.stripEnd <$> (compileFile sourceFile >>= expectRight)
+      expectedNix <- Text.stripEnd <$> TextIO.readFile expectedNixFile
+      emitted <- Text.stripEnd <$> (emitFile sourceFile >>= expectRight)
+      expectedDecl <- Text.stripEnd <$> TextIO.readFile expectedDeclFile
+      compiled `shouldBe` expectedNix
+      emitted `shouldBe` expectedDecl

@@ -161,7 +161,7 @@ loadSupport path = do
   if not exists
     then pure (Right (World [] Map.empty))
     else do
-      workspaceFiles <- map (\file -> DeclarationSupportFile file file) <$> findDeclarationFiles root
+      workspaceFiles <- map (\file -> DeclarationSupportFile file file) <$> findWorkspaceDeclarationFiles root
       configuredFilesResult <- loadConfiguredDeclarationFiles root
       case configuredFilesResult of
         Left err -> pure (Left err)
@@ -326,6 +326,23 @@ findDeclarationFiles dir = do
       if isDir
         then findDeclarationFiles path
         else pure [normalise path | ".d.tnix" `isSuffixOf` name]
+
+findWorkspaceDeclarationFiles :: FilePath -> IO [FilePath]
+findWorkspaceDeclarationFiles root = go root
+  where
+    go dir = do
+      names <- sort <$> listDirectory dir
+      fmap concat $
+        forM names $ \name -> do
+          let path = dir </> name
+          isDir <- doesDirectoryExist path
+          if isDir
+            then do
+              nestedWorkspace <- if normalise path == normalise root then pure False else hasWorkspaceMarker path
+              if nestedWorkspace
+                then pure []
+                else go path
+            else pure [normalise path | ".d.tnix" `isSuffixOf` name]
 
 resolvePath :: FilePath -> FilePath -> FilePath
 resolvePath _ "builtins" = builtinsAmbientKey

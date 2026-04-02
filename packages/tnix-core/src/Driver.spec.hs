@@ -531,6 +531,31 @@ spec = describe "analysis" $ do
             `shouldBe` Just (Scheme [] (TRecord (Map.fromList [("value", tInt)])))
       )
 
+  it "does not load ambient declarations from nested workspaces into the parent workspace" $
+    withTempTree
+      [ ("flake.nix", "{}"),
+        ( "builtins.d.tnix",
+          source
+            [ "declare \"builtins\" {",
+              "  add :: Int -> Int -> Int;",
+              "};"
+            ]
+        ),
+        ("examples/tnix.config.tnix", "{ declarationPacks = []; }"),
+        ( "examples/builtins.d.tnix",
+          source
+            [ "declare \"builtins\" {",
+              "  add :: String -> String -> String;",
+              "};"
+            ]
+        ),
+        ("app/main.tnix", "builtins.add 1 2")
+      ]
+      ( \root -> do
+          analysis <- analyzeFile (root <> "/app/main.tnix") >>= expectRight
+          fmap renderScheme (analysisRoot analysis) `shouldBe` Just "Int"
+      )
+
   it "loads a bundled tnix.config declaration for config imports" $
     withTempTree
       [ ( "tnix.config.tnix",

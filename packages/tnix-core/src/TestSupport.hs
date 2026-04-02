@@ -6,6 +6,7 @@ module TestSupport
     fixturePath,
     fixturePathCandidates,
     source,
+    withCopiedFixtureTree,
     withTempTree,
   )
 where
@@ -15,7 +16,7 @@ import Control.Monad (forM_)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, getTemporaryDirectory, removeFile, removePathForcibly)
+import System.Directory (copyFile, createDirectory, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, getTemporaryDirectory, listDirectory, removeFile, removePathForcibly)
 import System.FilePath ((</>), normalise, takeDirectory)
 import System.IO (hClose, openTempFile)
 import Test.Hspec (Expectation, expectationFailure)
@@ -76,3 +77,23 @@ withTempTree files action = bracket createRoot removePathForcibly (\root -> writ
         let path = root </> relative
         createDirectoryIfMissing True (takeDirectory path)
         Text.writeFile path content
+
+withCopiedFixtureTree :: FilePath -> (FilePath -> IO a) -> IO a
+withCopiedFixtureTree fixtureRoot action =
+  withTempTree [("flake.nix", "{}")] $ \root -> do
+    copyTree fixtureRoot root
+    action root
+  where
+    copyTree sourceDir destDir = do
+      names <- listDirectory sourceDir
+      forM_ names $ \name -> do
+        let sourcePath = sourceDir </> name
+            destPath = destDir </> name
+        isDir <- doesDirectoryExist sourcePath
+        if isDir
+          then do
+            createDirectoryIfMissing True destPath
+            copyTree sourcePath destPath
+          else do
+            createDirectoryIfMissing True (takeDirectory destPath)
+            copyFile sourcePath destPath
