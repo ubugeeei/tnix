@@ -4,10 +4,11 @@ module Main (main) where
 
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as Text
+import Data.Text.IO qualified as TextIO
 import Test.Hspec
-import Driver (compileText, emitFileTo, emitText, parseText)
+import Driver (compileFile, compileText, emitFile, emitFileTo, emitText, parseText)
 import Syntax
-import TestSupport (expectLeftContaining, expectRight, source, withTempTree)
+import TestSupport (expectLeftContaining, expectRight, fixturePath, source, withTempTree)
 import Type
 
 main :: IO ()
@@ -357,5 +358,30 @@ spec = describe "compile and emit" $ do
           output <- emitFileTo (root <> "/src/main.tnix") (root <> "/types/generated/main.d.tnix") >>= expectRight
           Text.isInfixOf "declare \"../../src/main.nix\"" output `shouldBe` True
       )
+
+  describe "golden regressions" $
+    mapM_ goldenFixtureSpec compileEmitFixtures
   where
     parseDecl = parseText
+
+compileEmitFixtures :: [FilePath]
+compileEmitFixtures =
+  [ "record-root",
+    "poly-id",
+    "scalar-cast",
+    "float-root",
+    "linear-fn"
+  ]
+
+goldenFixtureSpec :: FilePath -> Spec
+goldenFixtureSpec name =
+  it ("matches the stored compile and emit output for " <> name) $ do
+    sourceFile <- fixturePath ("packages/tnix-core/fixtures/compile-emit/" <> name <> "/main.tnix")
+    expectedNixFile <- fixturePath ("packages/tnix-core/fixtures/compile-emit/" <> name <> "/expected.nix")
+    expectedDeclFile <- fixturePath ("packages/tnix-core/fixtures/compile-emit/" <> name <> "/expected.d.tnix")
+    compiled <- Text.stripEnd <$> (compileFile sourceFile >>= expectRight)
+    expectedNix <- Text.stripEnd <$> TextIO.readFile expectedNixFile
+    emitted <- Text.stripEnd <$> (emitFile sourceFile >>= expectRight)
+    expectedDecl <- Text.stripEnd <$> TextIO.readFile expectedDeclFile
+    compiled `shouldBe` expectedNix
+    emitted `shouldBe` expectedDecl

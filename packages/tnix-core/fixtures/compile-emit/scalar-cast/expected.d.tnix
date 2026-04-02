@@ -1,0 +1,3 @@
+declare "./main.nix" {
+  default :: Number;
+};

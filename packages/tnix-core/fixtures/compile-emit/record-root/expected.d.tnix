@@ -1,0 +1,4 @@
+declare "./main.nix" {
+  count :: 1;
+  name :: "tnix";
+};

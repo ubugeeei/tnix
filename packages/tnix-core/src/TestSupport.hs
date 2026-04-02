@@ -3,6 +3,7 @@
 module TestSupport
   ( expectLeftContaining,
     expectRight,
+    fixturePath,
     source,
     withTempTree,
   )
@@ -13,8 +14,8 @@ import Control.Monad (forM_)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Text.IO qualified as Text
-import System.Directory (createDirectory, createDirectoryIfMissing, getTemporaryDirectory, removeFile, removePathForcibly)
-import System.FilePath ((</>), takeDirectory)
+import System.Directory (createDirectory, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getCurrentDirectory, getTemporaryDirectory, removeFile, removePathForcibly)
+import System.FilePath ((</>), normalise, takeDirectory)
 import System.IO (hClose, openTempFile)
 import Test.Hspec (Expectation, expectationFailure)
 
@@ -31,6 +32,24 @@ expectLeftContaining result needle =
 
 source :: [Text] -> Text
 source = Text.unlines
+
+fixturePath :: FilePath -> IO FilePath
+fixturePath relative = do
+  cwd <- getCurrentDirectory
+  findRepoRoot (normalise cwd)
+  where
+    findRepoRoot dir = do
+      let markerFile = dir </> "cabal.project"
+          markerDir = dir </> ".git"
+      hasProject <- doesFileExist markerFile
+      hasGit <- doesDirectoryExist markerDir
+      if hasProject || hasGit
+        then pure (dir </> relative)
+        else
+          let parent = normalise (takeDirectory dir)
+           in if parent == dir
+                then expectationFailure ("could not locate repo root for fixture path " <> show relative) >> fail "missing repo root"
+                else findRepoRoot parent
 
 withTempTree :: [(FilePath, Text)] -> (FilePath -> IO a) -> IO a
 withTempTree files action = bracket createRoot removePathForcibly (\root -> writeTree root >> action root)
