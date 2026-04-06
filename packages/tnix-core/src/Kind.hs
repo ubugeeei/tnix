@@ -242,15 +242,25 @@ exprAnnotations = \case
   EBool _ -> []
   ENull -> []
   EPath _ -> []
-  ELambda (PVar _ annotation) body -> maybe [] pure annotation <> exprAnnotations body
+  ELambda pattern' body -> patternAnnotations pattern' <> exprAnnotations body
   EApp fun arg -> exprAnnotations fun <> exprAnnotations arg
   EAdd left right -> exprAnnotations left <> exprAnnotations right
   ELet items body -> foldMap (letItemAnnotations . markedValue) items <> exprAnnotations body
   EAttrSet items -> foldMap attrAnnotations items
-  ESelect base _ -> exprAnnotations base
+  ESelect base steps -> exprAnnotations base <> foldMap selectStepAnnotations steps
   EIf cond yesExpr noExpr -> foldMap exprAnnotations [cond, yesExpr, noExpr]
   EList members -> foldMap exprAnnotations members
   ECast expr ty -> exprAnnotations expr <> [ty]
+
+patternAnnotations :: Pattern -> [Type]
+patternAnnotations = \case
+  PVar _ annotation -> maybe [] pure annotation
+  PAttrSet _ _ -> []
+
+selectStepAnnotations :: SelectStep -> [Type]
+selectStepAnnotations = \case
+  SelectName _ -> []
+  SelectDynamic expr -> exprAnnotations expr
 
 letItemAnnotations :: LetItem -> [Type]
 letItemAnnotations = \case

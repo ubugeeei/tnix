@@ -1,6 +1,6 @@
 cabal-version:      3.8
 name:               tnix-cli
-version:            0.3.0.0
+version:            0.3.1.0
 build-type:         Simple
 license:            MIT
 license-file:       LICENSE

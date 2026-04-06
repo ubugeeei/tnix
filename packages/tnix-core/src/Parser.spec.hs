@@ -27,7 +27,7 @@ spec = describe "parseProgram" $ do
     programAmbient program
       `shouldBe` [AmbientDecl "./lib.nix" [AmbientEntry "default" (TApp (TCon "Box") tInt)]]
     programExpr program
-      `shouldBe` Just (plain (ELet [plain (LetBinding "box" (EApp (EVar "import") (EPath "./lib.nix")))] (ESelect (EVar "box") ["value"])))
+      `shouldBe` Just (plain (ELet [plain (LetBinding "box" (EApp (EVar "import") (EPath "./lib.nix")))] (ESelect (EVar "box") [SelectName "value"])))
 
   it "parses typed lambdas and nested selections without changing nix shape" $ do
     program <- expectRight $ parseProgram "main.tnix" "{ nested = { value = 1; }; }.nested.value"
@@ -36,7 +36,7 @@ spec = describe "parseProgram" $ do
         ( plain
             ( ESelect
                 (EAttrSet [AttrField "nested" (EAttrSet [AttrField "value" (EInt 1)])])
-                ["nested", "value"]
+                [SelectName "nested", SelectName "value"]
             )
         )
 
@@ -123,6 +123,10 @@ spec = describe "parseProgram" $ do
     program <- expectRight $ parseProgram "main.tnix" "(x :: Int): x"
     programExpr program `shouldBe` Just (plain (ELambda (PVar "x" (Just tInt)) (EVar "x")))
 
+  it "parses attrset lambda binders used by flakes" $ do
+    program <- expectRight $ parseProgram "main.tnix" "{ self, nixpkgs, ... }: self"
+    programExpr program `shouldBe` Just (plain (ELambda (PAttrSet ["self", "nixpkgs"] True) (EVar "self")))
+
   it "parses comments, inherit clauses, and list conditionals" $ do
     program <-
       expectRight $
@@ -158,12 +162,51 @@ spec = describe "parseProgram" $ do
   it "parses absolute path imports and nested field selections in applications" $ do
     program <- expectRight $ parseProgram "main.tnix" "(import /etc/hosts).meta.value"
     programExpr program
-      `shouldBe` Just (plain (ESelect (EApp (EVar "import") (EPath "/etc/hosts")) ["meta", "value"]))
+      `shouldBe` Just (plain (ESelect (EApp (EVar "import") (EPath "/etc/hosts")) [SelectName "meta", SelectName "value"]))
 
   it "allows reserved keywords in field and selector positions" $ do
     program <- expectRight $ parseProgram "main.tnix" "{ any = 1; }.any"
     programExpr program
-      `shouldBe` Just (plain (ESelect (EAttrSet [AttrField "any" (EInt 1)]) ["any"]))
+      `shouldBe` Just (plain (ESelect (EAttrSet [AttrField "any" (EInt 1)]) [SelectName "any"]))
+
+  it "parses quoted attribute names and dynamic selections" $ do
+    quotedProgram <- expectRight $ parseProgram "main.tnix" "{ \"aarch64-darwin\" = 1; }.\"aarch64-darwin\""
+    dynamicProgram <- expectRight $ parseProgram "main.tnix" "self.packages.${system}.default"
+    quotedProgram
+      `shouldSatisfy`
+        ( \program ->
+            programExpr program
+              == Just
+                ( plain
+                    ( ESelect
+                        (EAttrSet [AttrField "aarch64-darwin" (EInt 1)])
+                        [SelectName "aarch64-darwin"]
+                    )
+                )
+        )
+    dynamicProgram
+      `shouldSatisfy`
+        ( \program ->
+            programExpr program
+              == Just
+                ( plain
+                    ( ESelect
+                        (EVar "self")
+                        [ SelectName "packages",
+                          SelectDynamic (EVar "system"),
+                          SelectName "default"
+                        ]
+                    )
+                )
+        )
+
+  it "parses indented strings as executable literals" $ do
+    program <-
+      expectRight $
+        parseProgram
+          "main.tnix"
+          (source ["''", "hello", "world", "''"])
+    programExpr program `shouldBe` Just (plain (EString (Indented "\nhello\nworld\n")))
 
   it "parses as-casts after selections and inside list items" $ do
     castProgram <- expectRight $ parseProgram "main.tnix" "{ as = 1; }.as as Int as Number"
@@ -172,7 +215,7 @@ spec = describe "parseProgram" $ do
       `shouldBe` Just
         ( plain
             ( ECast
-                (ECast (ESelect (EAttrSet [AttrField "as" (EInt 1)]) ["as"]) tInt)
+                (ECast (ESelect (EAttrSet [AttrField "as" (EInt 1)]) [SelectName "as"]) tInt)
                 tNumber
             )
         )

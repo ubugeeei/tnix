@@ -138,6 +138,40 @@ spec = describe "compile and emit" $ do
     output <- compileText "math.nix" "{ inc = x: x + 1; }" >>= expectRight
     "x + 1" `Text.isInfixOf` output `shouldBe` True
 
+  it "compiles quoted attr names and dynamic selections without erasing them" $ do
+    output <-
+      compileText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  system = \"aarch64-darwin\";",
+              "in { \"aarch64-darwin\" = 1; }.${system}"
+            ]
+        )
+        >>= expectRight
+    "aarch64-darwin = 1;" `Text.isInfixOf` output `shouldBe` True
+    ".${system}" `Text.isInfixOf` output `shouldBe` True
+
+  it "compiles attrset lambda binders and indented strings" $ do
+    output <-
+      compileText
+        "main.tnix"
+        ( source
+            [ "{ self, nixpkgs, ... }:",
+              "  {",
+              "    shellHook = ''",
+              "      export LANG=C.UTF-8",
+              "      echo ready",
+              "    '';",
+              "    inherit self nixpkgs;",
+              "  }"
+            ]
+        )
+        >>= expectRight
+    "{ self, nixpkgs, ... }:" `Text.isInfixOf` output `shouldBe` True
+    "shellHook = ''" `Text.isInfixOf` output `shouldBe` True
+    "echo ready" `Text.isInfixOf` output `shouldBe` True
+
   it "emits float literal roots precisely" $ do
     output <- emitText "main.tnix" "1.5" >>= expectRight
     Text.isInfixOf "default :: 1.5;" output `shouldBe` True

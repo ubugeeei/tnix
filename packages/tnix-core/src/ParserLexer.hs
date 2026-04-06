@@ -8,12 +8,14 @@
 module ParserLexer
   ( DirectiveTargets,
     Parser,
+    attrName,
     brackets,
     directiveForCurrentLine,
     braces,
     float,
     fieldName,
     identifier,
+    indentedStringLiteral,
     integer,
     lexeme,
     parens,
@@ -21,6 +23,7 @@ module ParserLexer
     reserved,
     sc,
     stringLiteral,
+    termStringLiteral,
     symbol,
   )
 where
@@ -37,6 +40,7 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer qualified as L
 import Syntax (DiagnosticDirective)
+import Syntax qualified
 import Type (Name)
 
 -- | Parser type used throughout the frontend.
@@ -87,9 +91,31 @@ fieldName = lexeme $ do
   rest <- many (satisfy identCont)
   pure (Text.pack (first : rest))
 
+-- | Parse a field, selector, or declaration entry name.
+--
+-- tnix keeps quoted attribute names as ordinary textual field keys, so callers
+-- that do not care about the original quoting can consume both forms through
+-- this helper.
+attrName :: Parser Name
+attrName = fieldName <|> stringLiteral
+
 -- | Parse a double-quoted string literal.
 stringLiteral :: Parser Text
 stringLiteral = lexeme $ Text.pack <$> (char '"' *> manyTill L.charLiteral (char '"'))
+
+-- | Parse a raw Nix indented string literal.
+--
+-- This intentionally preserves the inner text verbatim so later phases can
+-- round-trip shell hooks and install phases without first understanding every
+-- string escape.
+indentedStringLiteral :: Parser Text
+indentedStringLiteral = lexeme $ Text.pack <$> (try (string "''") *> manyTill anySingle (try (string "''")))
+
+-- | Parse any executable string literal form supported by tnix.
+termStringLiteral :: Parser Syntax.StringLiteral
+termStringLiteral =
+  (Syntax.DoubleQuoted <$> stringLiteral)
+    <|> (Syntax.Indented <$> indentedStringLiteral)
 
 -- | Parse a decimal integer literal.
 integer :: Parser Integer

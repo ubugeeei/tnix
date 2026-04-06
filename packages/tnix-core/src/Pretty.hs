@@ -16,6 +16,8 @@ where
 
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Char (isAlphaNum, isLetter)
+import Data.Text qualified as Text
 import Indexed (tensorView, tupleView)
 import Prettyprinter
 import Prettyprinter.Render.Text qualified as Render
@@ -63,26 +65,26 @@ prettyDecl :: FilePath -> [(Name, Type)] -> Doc ann
 prettyDecl path entries =
   vsep
     [ "declare" <+> dquotes (pretty path) <+> "{",
-      indent 2 (vsep [pretty name <+> "::" <+> prettyType 0 ty <> ";" | (name, ty) <- entries]),
+      indent 2 (vsep [prettyAttrName name <+> "::" <+> prettyType 0 ty <> ";" | (name, ty) <- entries]),
       "};"
     ]
 
 prettyExpr :: Int -> Expr -> Doc ann
 prettyExpr p = \case
   EVar name -> pretty name
-  EString value -> dquotes (pretty value)
+  EString value -> prettyStringLiteral value
   EFloat value -> pretty (show value)
   EInt value -> pretty value
   EBool True -> "true"
   EBool False -> "false"
   ENull -> "null"
   EPath path -> pretty path
-  ELambda (PVar name _) body -> parenIf (p > 0) (pretty name <> ":" <+> prettyExpr 0 body)
+  ELambda pattern' body -> parenIf (p > 0) (prettyPattern pattern' <> ":" <+> prettyExpr 0 body)
   EApp f x -> parenIf (p > 1) (prettyExpr 1 f <+> prettyExpr 2 x)
   EAdd left right -> parenIf (p > 0) (prettyExpr 1 left <+> "+" <+> prettyExpr 1 right)
   ELet items body -> vsep ["let", indent 2 (vsep (map (prettyLet . markedValue) items)), "in" <+> prettyExpr 0 body]
   EAttrSet items -> vsep ["{", indent 2 (vsep (map prettyAttr items)), "}"]
-  ESelect base names -> parenIf (p > 2) (prettyExpr 2 base <> foldMap (("." <>) . pretty) names)
+  ESelect base steps -> parenIf (p > 2) (prettyExpr 2 base <> foldMap prettySelectStep steps)
   EIf a b c -> vsep ["if" <+> prettyExpr 0 a, "then" <+> prettyExpr 0 b, "else" <+> prettyExpr 0 c]
   EList items -> "[" <+> hsep (map (prettyExpr 0) items) <+> "]"
   ECast expr ty -> parenIf (p > 0) (prettyExpr 1 expr <+> "as" <+> prettyType 0 ty)
@@ -92,10 +94,35 @@ prettyLet = \case
   LetSignature name ty -> pretty name <+> "::" <+> prettyType 0 ty <> ";"
   LetBinding name expr -> pretty name <+> "=" <+> prettyExpr 0 expr <> ";"
 
+prettyPattern :: Pattern -> Doc ann
+prettyPattern = \case
+  PVar name _ -> pretty name
+  PAttrSet names open ->
+    case map pretty names <> if open then [ellipsis] else [] of
+      [] -> "{}"
+      items -> "{ " <> hsep (punctuate "," items) <> " }"
+    where
+      ellipsis = "..."
+
+prettySelectStep :: SelectStep -> Doc ann
+prettySelectStep = \case
+  SelectName name -> "." <> prettyAttrName name
+  SelectDynamic expr -> ".${" <> prettyExpr 0 expr <> "}"
+
 prettyAttr :: AttrItem -> Doc ann
 prettyAttr = \case
-  AttrField name expr -> pretty name <+> "=" <+> prettyExpr 0 expr <> ";"
+  AttrField name expr -> prettyAttrName name <+> "=" <+> prettyExpr 0 expr <> ";"
   AttrInherit names -> "inherit" <+> hsep (pretty <$> names) <> ";"
+
+prettyAttrName :: Name -> Doc ann
+prettyAttrName name
+  | isBareAttrName name && name /= "inherit" = pretty name
+  | otherwise = dquotes (pretty name)
+
+prettyStringLiteral :: StringLiteral -> Doc ann
+prettyStringLiteral = \case
+  DoubleQuoted value -> dquotes (pretty value)
+  Indented value -> "''" <> pretty value <> "''"
 
 prettyType :: Int -> Type -> Doc ann
 prettyType p ty =
@@ -128,12 +155,21 @@ prettyType p ty =
                       One -> "%1 ->"
                       Many -> "->"
                in parenIf (p > 0) (prettyType 1 a <+> arrow <+> prettyType 0 b)
-            TRecord fields -> vsep ["{", indent 2 (vsep [pretty k <+> "::" <+> prettyType 0 v <> ";" | (k, v) <- Map.toList fields]), "}"]
+            TRecord fields -> vsep ["{", indent 2 (vsep [prettyAttrName k <+> "::" <+> prettyType 0 v <> ";" | (k, v) <- Map.toList fields]), "}"]
             TUnion members -> parenIf (p > 1) (hsep (punctuate " |" (map (prettyType 2) members)))
             TApp f x -> parenIf (p > 2) (prettyType 2 f <+> prettyType 3 x)
             TForall vars body -> parenIf (p > 0) ("forall" <+> hsep (pretty <$> vars) <> "." <+> prettyType 0 body)
             TConditional a b c d -> parenIf (p > 0) (prettyType 2 a <+> "extends" <+> prettyType 2 b <+> "?" <+> prettyType 0 c <+> ":" <+> prettyType 0 d)
             TInfer name -> "infer" <+> pretty name
+
+isBareAttrName :: Text -> Bool
+isBareAttrName name =
+  case Text.uncons name of
+    Just (first, rest) -> attrNameStart first && Text.all attrNameCont rest
+    Nothing -> False
+  where
+    attrNameStart c = isLetter c || c == '_'
+    attrNameCont c = isAlphaNum c || c `elem` ("_'-" :: String)
 
 parenIf :: Bool -> Doc ann -> Doc ann
 parenIf True = parens

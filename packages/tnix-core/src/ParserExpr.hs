@@ -52,7 +52,7 @@ ambientParser = do
 -- | Parse a single ambiently-exported member.
 ambientEntry :: Parser AmbientEntry
 ambientEntry = do
-  name <- fieldName
+  name <- attrName
   _ <- symbol "::"
   ty <- typeParser
   _ <- symbol ";"
@@ -131,8 +131,19 @@ applicationParser = foldl1 EApp <$> some postfixParser
 postfixParser :: Parser Expr
 postfixParser = do
   base <- atomParser
-  fields <- many (try (symbol "." *> fieldName))
-  pure $ if null fields then base else ESelect base fields
+  steps <- many (try selectStepParser)
+  pure $ if null steps then base else ESelect base steps
+
+selectStepParser :: Parser SelectStep
+selectStepParser = do
+  _ <- symbol "."
+  try dynamicStepParser <|> (SelectName <$> attrName)
+  where
+    dynamicStepParser = do
+      _ <- symbol "${"
+      stepExpr <- expressionParser
+      _ <- symbol "}"
+      pure (SelectDynamic stepExpr)
 
 -- | Parse atomic expression forms.
 atomParser :: Parser Expr
@@ -141,7 +152,7 @@ atomParser =
     [ parens expressionParser,
       attrSetParser,
       listParser,
-      EString <$> stringLiteral,
+      EString <$> termStringLiteral,
       EFloat <$> float,
       EInt <$> integer,
       EBool True <$ reserved "true",
@@ -161,7 +172,7 @@ attrParser = try inheritParser <|> fieldParser
   where
     inheritParser = reserved "inherit" *> (AttrInherit <$> some identifier) <* symbol ";"
     fieldParser = do
-      name <- fieldName
+      name <- attrName
       _ <- symbol "="
       expr <- expressionParser
       _ <- symbol ";"
@@ -180,12 +191,22 @@ listParser = EList <$> brackets (many listItem)
 
 -- | Parse a lambda binder pattern with an optional inline annotation.
 patternParser :: Parser Pattern
-patternParser = parens typed <|> (PVar <$> identifier <*> pure Nothing)
+patternParser = try (parens typed) <|> try attrSetPattern <|> (PVar <$> identifier <*> pure Nothing)
   where
     typed = do
       name <- identifier
       _ <- symbol "::"
       PVar name . Just <$> typeParser
+    attrSetPattern = braces $ do
+      items <- sepEndBy patternItem (symbol ",")
+      let names = [name | Left name <- items]
+          open = any isEllipsis items
+      pure (PAttrSet names open)
+    patternItem = (Left <$> identifier) <|> (Right () <$ symbol "...")
+    isEllipsis item =
+      case item of
+        Right () -> True
+        Left _ -> False
 
 markCurrent :: Parser a -> Parser (Marked a)
 markCurrent parser = Marked <$> directiveForCurrentLine <*> parser

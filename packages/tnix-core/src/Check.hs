@@ -116,16 +116,16 @@ checkProgram ctx program =
 inferExpr :: CheckContext -> TypeEnv -> Expr -> InferM Type
 inferExpr ctx env = \case
   EVar name -> maybe (lift (Left ("unbound name: " <> show name))) instantiate (Map.lookup name env)
-  EString text -> pure (TLit (LString text))
+  EString text -> pure (TLit (LString (stringLiteralText text)))
   EFloat n -> pure (TLit (LFloat n))
   EInt n -> pure (TLit (LInt n))
   EBool b -> pure (TLit (LBool b))
   ENull -> pure tNull
   EPath _ -> pure tPath
-  ELambda (PVar name ann) body -> do
-    argTy <- maybe freshMeta pure ann
-    bodyTy <- inferExpr ctx (Map.insert name (Scheme [] argTy) env) body
-    pure (TFun (inferLambdaMultiplicity name body) argTy bodyTy)
+  ELambda pattern' body -> do
+    (argTy, patternEnv) <- inferPatternBindings pattern'
+    bodyTy <- inferExpr ctx (patternEnv <> env) body
+    pure (TFun (inferLambdaMultiplicity pattern' body) argTy bodyTy)
   EApp (EVar "import") (EPath raw) ->
     maybe (pure tDynamic) instantiate (Map.lookup (resolvePath (checkFile ctx) raw) (checkAmbient ctx))
   EApp fun arg -> do
@@ -165,13 +165,11 @@ inferExpr ctx env = \case
     foldM step baseTy fields
     where
       step ty field =
-        zonk ty >>= \resolvedTy ->
-          if resolveType (checkAliases ctx) resolvedTy == tAny
-            then pure tAny
-            else
-              case lookupRecordField (checkAliases ctx) resolvedTy field of
-                Just fieldTy -> instantiate (schemeFromAnnotation fieldTy)
-                Nothing -> lift (Left ("missing field " <> show field))
+        case field of
+          SelectName name -> inferStaticSelect ctx ty name
+          SelectDynamic expr -> do
+            keyTy <- inferExpr ctx env expr
+            inferDynamicSelect ctx ty keyTy
   EIf cond yesExpr noExpr -> do
     condTy <- inferExpr ctx env cond
     _ <- constrain ctx condTy tBool
@@ -247,6 +245,64 @@ inferLet ctx env items = do
     pure (name, maybe (closeMetas resolved) id (Map.lookup name sigs))
   let finals = Map.fromList inferred
   pure (finals <> env, finals)
+
+inferPatternBindings :: Pattern -> InferM (Type, TypeEnv)
+inferPatternBindings = \case
+  PVar name ann -> do
+    argTy <- maybe freshMeta pure ann
+    pure (argTy, Map.singleton name (Scheme [] argTy))
+  PAttrSet names _ -> do
+    let dups = duplicateNames names
+    when (not (null dups)) (lift (Left ("duplicate pattern bindings: " <> show dups)))
+    fieldTys <- traverse (const freshMeta) names
+    let fields = Map.fromList (zip names fieldTys)
+        env = Map.fromList (zip names (map (Scheme []) fieldTys))
+    pure (TRecord fields, env)
+
+inferStaticSelect :: CheckContext -> Type -> Name -> InferM Type
+inferStaticSelect ctx ty field =
+  zonk ty >>= \resolvedTy ->
+    let base' = resolveType (checkAliases ctx) resolvedTy
+     in if base' == tAny
+      then pure tAny
+      else
+        if base' == tDynamic || base' == tUnknown
+          then pure tDynamic
+          else
+            case lookupRecordField (checkAliases ctx) resolvedTy field of
+          Just fieldTy -> instantiate (schemeFromAnnotation fieldTy)
+          Nothing -> lift (Left ("missing field " <> show field))
+
+inferDynamicSelect :: CheckContext -> Type -> Type -> InferM Type
+inferDynamicSelect ctx baseTy keyTy = do
+  resolvedBaseTy <- zonk baseTy
+  resolvedKeyTy <- zonk keyTy
+  let aliases = checkAliases ctx
+      base' = resolveType aliases resolvedBaseTy
+      key' = resolveType aliases resolvedKeyTy
+  if base' == tAny || key' == tAny
+    then pure tAny
+    else
+      if base' == tDynamic || key' == tDynamic || key' == tUnknown
+        then pure tDynamic
+        else
+          case selectionKeyNames key' of
+            Just names ->
+              case traverse (lookupRecordField aliases base') names of
+                Just fieldTypes -> do
+                  instantiated <- traverse (instantiate . schemeFromAnnotation) fieldTypes
+                  pure (foldr1 (joinTypes aliases) instantiated)
+                Nothing -> lift $ Left ("missing field selected by dynamic key of type " <> show key')
+            Nothing ->
+              if isSubtype aliases key' tString || isConsistent aliases key' tString
+                then pure tDynamic
+                else lift $ Left ("dynamic field selection expects a string-like key, but got " <> show key')
+
+selectionKeyNames :: Type -> Maybe [Name]
+selectionKeyNames = \case
+  TLit (LString name) -> Just [name]
+  TUnion members -> concat <$> traverse selectionKeyNames members
+  _ -> Nothing
 
 -- | Instantiate a polymorphic scheme by replacing quantified variables with
 -- fresh inference metas.
@@ -540,10 +596,11 @@ duplicateNames = foldr step [] . group . sort
 --
 -- A binder used exactly once becomes linear; anything else becomes
 -- unrestricted. This is intentionally local and syntactic.
-inferLambdaMultiplicity :: Name -> Expr -> Multiplicity
-inferLambdaMultiplicity name body
-  | usageCount name body == 1 = One
-  | otherwise = Many
+inferLambdaMultiplicity :: Pattern -> Expr -> Multiplicity
+inferLambdaMultiplicity pattern' body =
+  case pattern' of
+    PVar name _ | usageCount name body == 1 -> One
+    _ -> Many
 
 -- | Count syntactic occurrences of a binder in an expression.
 --
@@ -563,8 +620,8 @@ usageCount target = go
       EBool _ -> 0
       ENull -> 0
       EPath _ -> 0
-      ELambda (PVar name _) body
-        | name == target -> 0
+      ELambda pattern' body
+        | target `elem` patternBoundNames pattern' -> 0
         | otherwise -> go body
       EApp fun arg -> go fun + go arg
       EAdd left right -> go left + go right
@@ -574,7 +631,7 @@ usageCount target = go
               then 0
               else sum (map (letItemCount . markedValue) items) + go body
       EAttrSet items -> sum (map attrItemCount items)
-      ESelect base _ -> go base
+      ESelect base steps -> go base + sum (map selectStepCount steps)
       EIf cond yesExpr noExpr -> go cond + go yesExpr + go noExpr
       EList items -> sum (map go items)
       ECast expr _ -> go expr
@@ -584,6 +641,14 @@ usageCount target = go
     attrItemCount = \case
       AttrField _ expr -> go expr
       AttrInherit names -> length (filter (== target) names)
+    selectStepCount = \case
+      SelectName _ -> 0
+      SelectDynamic expr -> go expr
+
+patternBoundNames :: Pattern -> [Name]
+patternBoundNames = \case
+  PVar name _ -> [name]
+  PAttrSet names _ -> names
 
 multiplicitySubtype :: Multiplicity -> Multiplicity -> Bool
 multiplicitySubtype actual expected =

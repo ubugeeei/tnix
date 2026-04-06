@@ -27,7 +27,7 @@ eraseExpr expr =
     EAdd left right -> EAdd (eraseExpr left) (eraseExpr right)
     ELet items body -> ELet (map eraseMarkedLetItem [item | item <- items, isLetBinding (markedValue item)]) (eraseExpr body)
     EAttrSet items -> EAttrSet (map eraseAttrItem items)
-    ESelect base fields -> ESelect (eraseExpr base) fields
+    ESelect base fields -> ESelect (eraseExpr base) (map eraseSelectStep fields)
     EIf cond yesExpr noExpr -> EIf (eraseExpr cond) (eraseExpr yesExpr) (eraseExpr noExpr)
     EList members -> EList (map eraseExpr members)
     ECast inner _ -> eraseExpr inner
@@ -35,6 +35,7 @@ eraseExpr expr =
 
 erasePattern :: Pattern -> Pattern
 erasePattern (PVar name _) = PVar name Nothing
+erasePattern (PAttrSet names open) = PAttrSet names open
 
 eraseLetItem :: LetItem -> LetItem
 eraseLetItem (LetBinding name expr) = LetBinding name (eraseExpr expr)
@@ -52,3 +53,9 @@ eraseAttrItem item =
   case item of
     AttrField name expr -> AttrField name (eraseExpr expr)
     AttrInherit names -> AttrInherit names
+
+eraseSelectStep :: SelectStep -> SelectStep
+eraseSelectStep step =
+  case step of
+    SelectName name -> SelectName name
+    SelectDynamic expr -> SelectDynamic (eraseExpr expr)

@@ -296,7 +296,7 @@ decodeAttrSet = \case
 
 decodeStringField :: Expr -> Either String Text
 decodeStringField = \case
-  EString text -> Right text
+  EString text -> Right (stringLiteralText text)
   other -> Left ("expected string field in tnix.config.tnix, but got " <> show other)
 
 decodeBoolField :: Text -> Expr -> Either String Bool
@@ -307,7 +307,7 @@ decodeBoolField name = \case
 decodePathField :: FilePath -> Text -> Expr -> Either String FilePath
 decodePathField root name = \case
   EPath path -> Right (resolveConfigPath root path)
-  EString text -> Right (resolveConfigPath root (Text.unpack text))
+  EString text -> Right (resolveConfigPath root (Text.unpack (stringLiteralText text)))
   other -> Left ("expected path-like field for " <> Text.unpack name <> ", but got " <> show other)
 
 decodePathListField :: FilePath -> Text -> Expr -> Either String [FilePath]
@@ -317,7 +317,7 @@ decodePathListField root name = \case
   where
     decodeItem = \case
       EPath path -> Right (resolveConfigPath root path)
-      EString text -> Right (resolveConfigPath root (Text.unpack text))
+      EString text -> Right (resolveConfigPath root (Text.unpack (stringLiteralText text)))
       item -> Left ("expected path-like item in " <> Text.unpack name <> ", but got " <> show item)
 
 resolveConfigPath :: FilePath -> FilePath -> FilePath

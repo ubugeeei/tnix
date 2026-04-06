@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1 - 2026-04-06
+
+- Support quoted attribute names, dynamic `${...}` selections, attrset lambda binders, and indented `'' ... ''` strings in executable `tnix`.
+- Extend the checker, compiler, and pretty-printer so flake-oriented source shapes round-trip instead of falling out of the reliable subset.
+- Add regression coverage for flake-style parsing, typing, and compile/emit behavior, including quoted selectors and dynamic package lookups.
+
 ## v0.3.0 - 2026-04-02
 
 - Add project-aware CLI workflows for `check-project`, `build`, and `emit-project`, together with stronger config decoding and absolute root handling.

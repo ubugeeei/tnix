@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 -- | Surface syntax for tnix.
 --
 -- The AST intentionally stays close to ordinary Nix source. Type-only syntax is
@@ -13,9 +15,13 @@ module Syntax
     Marked (..),
     Pattern (..),
     Program (..),
+    SelectStep (..),
+    StringLiteral (..),
+    stringLiteralText,
   )
 where
 
+import Data.Text (Text)
 import Type (Name, Type, TypeAlias)
 
 -- | Source comment directives that affect checker diagnostics.
@@ -78,7 +84,7 @@ data AmbientEntry = AmbientEntry
 -- back to plain `.nix`.
 data Expr
   = EVar Name
-  | EString Name
+  | EString StringLiteral
   | EFloat Double
   | EInt Integer
   | EBool Bool
@@ -89,11 +95,26 @@ data Expr
   | EAdd Expr Expr
   | ELet [Marked LetItem] Expr
   | EAttrSet [AttrItem]
-  | ESelect Expr [Name]
+  | ESelect Expr [SelectStep]
   | EIf Expr Expr Expr
   | EList [Expr]
   | ECast Expr Type
   deriving (Eq, Show)
+
+-- | String literals preserved in executable tnix.
+--
+-- Double-quoted strings and indented `'' ... ''` strings are both first-class
+-- so the compiler can round-trip the original Nix string form instead of
+-- normalizing everything into one surface spelling.
+data StringLiteral
+  = DoubleQuoted Text
+  | Indented Text
+  deriving (Eq, Show)
+
+stringLiteralText :: StringLiteral -> Text
+stringLiteralText = \case
+  DoubleQuoted text -> text
+  Indented text -> text
 
 -- | Lambda binder pattern.
 --
@@ -101,6 +122,16 @@ data Expr
 -- syntax is deliberately Haskell-like while remaining valid-looking to Nix
 -- users.
 data Pattern = PVar Name (Maybe Type)
+             | PAttrSet [Name] Bool
+  deriving (Eq, Show)
+
+-- | One step in an attribute selection chain.
+--
+-- Static selections cover both bare and quoted attribute names, while dynamic
+-- steps preserve Nix antiquotation such as `self.packages.${system}`.
+data SelectStep
+  = SelectName Name
+  | SelectDynamic Expr
   deriving (Eq, Show)
 
 -- | Items allowed in a `let` block.

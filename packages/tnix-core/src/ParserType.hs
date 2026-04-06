@@ -90,7 +90,7 @@ recordParser :: Parser Type
 recordParser = TRecord . Map.fromList <$> braces (many fieldParser)
   where
     fieldParser = do
-      name <- fieldName
+      name <- attrName
       _ <- symbol "::"
       ty <- typeParser
       _ <- symbol ";"

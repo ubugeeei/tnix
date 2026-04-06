@@ -45,7 +45,7 @@ import Control.Monad (when)
 import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Alias (collectApps)
-import Syntax (AmbientDecl (ambientEntries), AmbientEntry (ambientEntryType), AttrItem (..), Expr (..), LetItem (..), Marked (markedValue), Pattern (..), Program (..))
+import Syntax (AmbientDecl (ambientEntries), AmbientEntry (ambientEntryType), AttrItem (..), Expr (..), LetItem (..), Marked (markedValue), Pattern (..), Program (..), SelectStep (..))
 import Type (LiteralType (..), Name, Type (..), TypeAlias (typeAliasBody), tDynamic, tFloat, tInt, tList, tNat, tNumber)
 
 -- | Infer the most precise sequence type that can be justified from a list
@@ -333,16 +333,21 @@ validateAmbientDecl ambientDecl = traverse_ (validateType "ambient entry" . ambi
 -- syntax attached to them is inspected.
 validateExpr :: Expr -> Either String ()
 validateExpr = \case
-  ELambda (PVar _ annotation) body -> traverse_ (validateType "term annotation") annotation *> validateExpr body
+  ELambda pattern' body -> validatePattern pattern' *> validateExpr body
   EApp fun arg -> validateExpr fun *> validateExpr arg
   EAdd left right -> validateExpr left *> validateExpr right
   ELet items body -> traverse_ (validateLetItem . markedValue) items *> validateExpr body
   EAttrSet items -> traverse_ validateAttrItem items
-  ESelect base _ -> validateExpr base
+  ESelect base steps -> validateExpr base *> traverse_ validateSelectStep steps
   EIf cond yesExpr noExpr -> validateExpr cond *> validateExpr yesExpr *> validateExpr noExpr
   EList items -> traverse_ validateExpr items
   ECast expr ty -> validateExpr expr *> validateType "term annotation" ty
   _ -> pure ()
+
+validatePattern :: Pattern -> Either String ()
+validatePattern = \case
+  PVar _ annotation -> traverse_ (validateType "term annotation") annotation
+  PAttrSet _ _ -> pure ()
 
 -- | Validate one `let` item's annotation payload, if present.
 validateLetItem :: LetItem -> Either String ()
@@ -355,6 +360,11 @@ validateAttrItem :: AttrItem -> Either String ()
 validateAttrItem = \case
   AttrField _ expr -> validateExpr expr
   AttrInherit _ -> pure ()
+
+validateSelectStep :: SelectStep -> Either String ()
+validateSelectStep = \case
+  SelectName _ -> pure ()
+  SelectDynamic expr -> validateExpr expr
 
 -- | Validate one type for indexed, numeric, and unit structure.
 --

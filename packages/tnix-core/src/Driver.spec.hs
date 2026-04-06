@@ -56,6 +56,30 @@ spec = describe "analysis" $ do
     analysis <- analyzeText "main.tnix" "{ nested = { value = 1; }; }.nested.value" >>= expectRight
     analysisRoot analysis `shouldBe` Just (Scheme [] (TLit (LInt 1)))
 
+  it "follows quoted field selections" $ do
+    analysis <- analyzeText "main.tnix" "{ \"aarch64-darwin\" = 1; }.\"aarch64-darwin\"" >>= expectRight
+    analysisRoot analysis `shouldBe` Just (Scheme [] (TLit (LInt 1)))
+
+  it "joins dynamic field selections from string literal unions" $ do
+    analysis <-
+      analyzeText
+        "main.tnix"
+        ( source
+            [ "let",
+              "  system :: \"aarch64-darwin\" | \"x86_64-linux\";",
+              "  system = \"aarch64-darwin\";",
+              "  packages = { \"aarch64-darwin\" = 1; x86_64-linux = 2; };",
+              "in packages.${system}"
+            ]
+        )
+        >>= expectRight
+    analysisRoot analysis `shouldBe` Just (Scheme [] (TUnion [TLit (LInt 1), TLit (LInt 2)]))
+
+  it "infers attrset lambda binders used in flake outputs" $ do
+    analysis <- analyzeText "main.tnix" "{ self, nixpkgs, ... }: self" >>= expectRight
+    fmap renderScheme (analysisRoot analysis)
+      `shouldBe` Just "forall t0 t1. {\n  nixpkgs :: t1;\n  self :: t0;\n} -> t0"
+
   it "reports missing fields" $
     analyzeText "main.tnix" "{ value = 1; }.missing" >>= (`expectLeftContaining` "missing field")
 

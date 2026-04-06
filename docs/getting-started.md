@@ -124,6 +124,46 @@ This is the main bridge for incremental adoption:
 - describe its public API in `.d.tnix` or inline `declare`
 - use that API from typed `.tnix`
 
+## Flake Workflow Today
+
+For flakes, the most reliable workflow today is to keep the runtime flake logic
+in `.nix` and use `.tnix` as a typed projection over the parts you want to
+check.
+
+Example adapted from [`dogfood/flake-surface.tnix`](../dogfood/flake-surface.tnix):
+
+```tnix
+let
+  flake = import ../flake.nix;
+
+  inputs :: ResolvedFlakeInputs;
+  inputs = {
+    self = builtins;
+    nixpkgs = builtins;
+    flake-utils = builtins;
+  };
+
+  outputs :: FlakeOutputs;
+  outputs = flake.outputs inputs;
+in {
+  description = flake.description;
+  formatter = outputs.formatter.aarch64-darwin;
+  devShell = outputs.devShells.aarch64-darwin.default;
+}
+```
+
+This pattern lets you keep the checker on the stable surface while leaving the
+full flake implementation in `flake.nix` or a helper such as
+`nix/flake-outputs.nix`.
+
+Recent parser/compiler work now also supports the flake-oriented Nix forms that
+show up quickly in real projects:
+
+- quoted attribute names such as `"dotnet-sdk_9"` or `"aarch64-darwin"`
+- dynamic attribute access such as `self.packages.${system}`
+- attrset lambda arguments such as `{ self, nixpkgs, tnix }:`
+- indented strings in the `'' ... ''` form for `shellHook` and `installPhase`
+
 ## Bundled Ecosystem Declarations
 
 The repository ships curated declaration packs under `registry/` for both local

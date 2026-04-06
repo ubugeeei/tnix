@@ -18,6 +18,25 @@ The runtime model is simple:
 - `.d.tnix`: declaration-only files that describe existing `.nix` surfaces
 - `.nix`: erased runtime output
 
+## Current Executable Subset
+
+`tnix` keeps Nix-like surface syntax, but executable `.tnix` currently targets
+a reliable subset rather than full Nix parser parity.
+
+- record fields and dotted selectors accept both bare and quoted attribute
+  names, so `aarch64-darwin` and `"aarch64-darwin"` both work in executable
+  `.tnix`
+- field access supports both static dotted selections and dynamic steps such as
+  `self.packages.${system}`
+- lambda binders accept both ordinary variable binders (`x: x`) and attrset
+  patterns such as `{ self, nixpkgs, ... }:`
+- string literals include both ordinary double-quoted strings and indented
+  `'' ... ''` strings
+
+When you hit one of these edges, the intended workflow is to keep the runtime
+implementation in `.nix` and layer declarations or a thin `.tnix` wrapper on
+top.
+
 ## Expressions
 
 ### Literals

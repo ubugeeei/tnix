@@ -75,6 +75,12 @@ After compilation, type information is erased and only ordinary Nix code remains
 - shipped declaration files for `builtins`, `flake.nix`, and `tnix.config.tnix`
 - bundled declaration packs under `registry/` for workspace files and popular Nix ecosystem surfaces
 
+Executable `.tnix` currently targets a reliable Nix-like subset rather than full
+parser parity, but it now covers the common flake-oriented shapes that were
+previously awkward: quoted attribute names, dynamic `${...}` selections,
+attrset lambda binders, and indented `'' ... ''` strings all round-trip through
+the parser, checker, and compiler.
+
 ## Installation
 
 Install the CLI and language server from the published flake:

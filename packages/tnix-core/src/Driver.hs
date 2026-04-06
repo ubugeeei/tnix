@@ -228,7 +228,7 @@ decodePathList root label = \case
   where
     decodeItem = \case
       EPath path -> Right (resolveConfigPath root path)
-      EString text -> Right (resolveConfigPath root (Text.unpack text))
+      EString text -> Right (resolveConfigPath root (Text.unpack (stringLiteralText text)))
       item -> Left ("expected path-like item in " <> Text.unpack label <> ", but got " <> show item)
 
 expandDeclarationPackPath :: FilePath -> FilePath -> IO (Either String [DeclarationSupportFile])
