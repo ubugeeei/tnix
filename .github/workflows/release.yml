@@ -51,20 +51,20 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Mount Cabal package cache
         if: ${{ startsWith(matrix.os, 'blacksmith-') }}
-        uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.4.0
+        uses: useblacksmith/stickydisk@74f3f01ab1392726dd6ee06904f0452b0ec1e151 # v1.4.0
         with:
           key: ${{ github.repository }}-cabal-packages-${{ runner.os }}-${{ hashFiles('cabal.project', 'packages/*/*.cabal') }}
           path: ~/.cabal/packages
 
       - name: Mount Cabal store
         if: ${{ startsWith(matrix.os, 'blacksmith-') }}
-        uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.4.0
+        uses: useblacksmith/stickydisk@74f3f01ab1392726dd6ee06904f0452b0ec1e151 # v1.4.0
         with:
           key: ${{ github.repository }}-cabal-store-${{ runner.os }}-${{ hashFiles('cabal.project', 'packages/*/*.cabal') }}
           path: ~/.cabal/store
@@ -88,7 +88,7 @@ jobs:
 
       - name: Mount pnpm store
         if: ${{ startsWith(matrix.os, 'blacksmith-') }}
-        uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.4.0
+        uses: useblacksmith/stickydisk@74f3f01ab1392726dd6ee06904f0452b0ec1e151 # v1.4.0
         with:
           key: ${{ github.repository }}-pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -159,7 +159,7 @@ jobs:
 
       - name: Generate SBOM for release archive
         id: sbom
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.20.5
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.20.5
         with:
           file: ${{ matrix.archive }}
           format: cyclonedx-json
@@ -211,7 +211,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -223,7 +223,7 @@ jobs:
 
       - name: Mount pnpm store
         if: ${{ startsWith(vars.CI_RUNNER || 'ubuntu-latest', 'blacksmith-') }}
-        uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.4.0
+        uses: useblacksmith/stickydisk@74f3f01ab1392726dd6ee06904f0452b0ec1e151 # v1.4.0
         with:
           key: ${{ github.repository }}-pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -250,7 +250,7 @@ jobs:
           nix develop --accept-flake-config --command pnpm --filter tnix exec vsce package --no-dependencies --out "../../tnix-vscode-$REF_NAME.vsix"
 
       - name: Generate SBOM for VS Code extension
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.20.5
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.20.5
         with:
           file: ./tnix-vscode-${{ env.REF_NAME }}.vsix
           format: cyclonedx-json
@@ -293,7 +293,7 @@ jobs:
           merge-multiple: true
 
       - name: Publish GitHub release
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: ./release-artifacts/*
           generate_release_notes: true
@@ -326,7 +326,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -338,7 +338,7 @@ jobs:
 
       - name: Mount pnpm store
         if: ${{ startsWith(vars.CI_RUNNER || 'ubuntu-latest', 'blacksmith-') }}
-        uses: useblacksmith/stickydisk@35ba2e331a80056a42af053ee54968511de2b7c7 # v1.4.0
+        uses: useblacksmith/stickydisk@74f3f01ab1392726dd6ee06904f0452b0ec1e151 # v1.4.0
         with:
           key: ${{ github.repository }}-pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
           path: ${{ steps.pnpm-store.outputs.path }}
